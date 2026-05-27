@@ -1,0 +1,36 @@
+{
+  "name": "simhub",
+  "version": "1.0.0",
+  "description": "A beautiful, premium Clinical Simulation Scenario Storage & running system designed to align with ASPiH standards.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "seed": "node seed.js",
+    "test": "node test-qa.js",
+    "test:ui": "node test-ui-save.js",
+    "screenshots": "node capture-screenshots.js"
+  },
+  "keywords": [
+    "clinical-simulation",
+    "healthcare",
+    "aspih",
+    "medical-education",
+    "scenario-builder",
+    "express",
+    "puppeteer"
+  ],
+  "author": "Antigravity",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/simhub.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/simhub/issues"
+  },
+  "homepage": "https://github.com/yourusername/simhub#readme",
+  "dependencies": {
+    "express": "^4.19.2",
+    "puppeteer-core": "^25.1.0"
+  }
+}

@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SimHub - Clinical Simulation Scenario Storage & Controller</title>
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+
+  <!-- 1. LOGIN OVERLAY SCREEN -->
+  <div id="login-screen" class="login-overlay">
+    <div class="glass-panel login-card">
+      <div class="login-logo">
+        <div class="logo-icon"><i class="fa-solid fa-heart-pulse"></i></div>
+        <div class="logo-text">SimHub</div>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: -8px;">Faculty Scenario & Program Storage</p>
+      </div>
+      
+      <form id="login-form">
+        <div class="form-group">
+          <label for="login-email">Faculty Email</label>
+          <input type="text" id="login-email" required placeholder="e.g. admin@simhub.local" value="admin@simhub.local">
+        </div>
+        <div class="form-group">
+          <label for="login-password">Access Password</label>
+          <input type="password" id="login-password" required placeholder="Enter password" value="admin123">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">
+          <i class="fa-solid fa-right-to-bracket"></i> Authenticate
+        </button>
+      </form>
+
+      <div class="login-credentials-helper">
+        <h5><i class="fa-solid fa-circle-info"></i> Demo Access Accounts</h5>
+        <p><strong>Admin (Read/Write):</strong><br>admin@simhub.local / admin123</p>
+        <p style="margin-top: 10px;"><strong>Faculty (Read-Only):</strong><br>faculty@simhub.local / faculty123</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. MAIN APPLICATION SHELL -->
+  <div id="app-shell" class="app-container" style="display: none;">
+    <header>
+      <div class="logo-section">
+        <div class="logo-icon"><i class="fa-solid fa-heart-pulse"></i></div>
+        <span class="logo-text" style="font-weight: 700;">SimHub</span>
+      </div>
+
+      <nav class="nav-links">
+        <button class="nav-button active" onclick="app.navigate('dashboard')">
+          <i class="fa-solid fa-chart-line"></i> Dashboard
+        </button>
+        <button class="nav-button" onclick="app.navigate('programmes')">
+          <i class="fa-solid fa-graduation-cap"></i> Programmes
+        </button>
+        <button class="nav-button admin-only" id="nav-btn-new-scenario" onclick="app.navigate('scenario-form-new')" style="display: none;">
+          <i class="fa-solid fa-square-plus"></i> New Scenario
+        </button>
+      </nav>
+
+      <div class="user-profile">
+        <button class="theme-toggle-btn" id="theme-toggle" onclick="app.toggleTheme()">
+          <i class="fa-solid fa-sun" id="theme-icon-sun" style="display:none;"></i>
+          <i class="fa-solid fa-moon" id="theme-icon-moon"></i>
+        </button>
+        <div class="glass-card" style="padding: 6px 12px; display: flex; align-items: center; gap: 8px;">
+          <span id="user-display-name" style="font-size: 0.9rem; font-weight: 500;">Clinical Faculty</span>
+          <span id="user-display-badge" class="badge badge-readonly">Read-Only</span>
+        </div>
+        <button class="btn btn-secondary" onclick="app.logout()" style="padding: 8px 12px;">
+          <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <!-- ============================================== -->
+      <!-- VIEW: DASHBOARD & LIBRARY                      -->
+      <!-- ============================================== -->
+      <section id="view-dashboard" class="view-section active">
+        <div class="dashboard-grid">
+          <div class="sidebar-panel">
+            <div class="glass-panel" style="padding: 16px;">
+              <h3 style="font-size: 1rem; margin-bottom: 12px; color: var(--accent-blue);">
+                <i class="fa-solid fa-folder-open"></i> Curricular Programmes
+              </h3>
+              <ul class="programme-list-nav" id="sidebar-programme-list">
+                <!-- Dynamically populated -->
+              </ul>
+            </div>
+            
+            <div class="glass-panel admin-only" id="sidebar-admin-panel" style="padding: 16px; display: none;">
+              <h3 style="font-size: 1rem; margin-bottom: 12px; color: var(--accent-emerald);">
+                <i class="fa-solid fa-screwdriver-wrench"></i> Quick Actions
+              </h3>
+              <button class="btn btn-emerald" style="width: 100%; margin-bottom: 8px;" onclick="app.navigate('scenario-form-new')">
+                <i class="fa-solid fa-plus"></i> Create Scenario
+              </button>
+              <button class="btn btn-secondary" style="width: 100%;" onclick="components.openProgrammeModal()">
+                <i class="fa-solid fa-folder-plus"></i> Create Programme
+              </button>
+            </div>
+          </div>
+
+          <div class="main-catalog-panel">
+            <div class="scenario-catalog-header">
+              <div>
+                <h2 id="catalog-title" style="font-size: 1.5rem; font-weight: 600;">Scenario Library</h2>
+                <p id="catalog-description" style="color: var(--text-secondary); font-size: 0.9rem;">Browse all registered clinical simulation scenarios.</p>
+              </div>
+              <div class="search-box">
+                <input type="text" id="scenario-search" placeholder="Search title, code, keyword..." oninput="components.filterScenarios()">
+              </div>
+            </div>
+
+            <div class="scenarios-grid" id="scenarios-list">
+              <!-- Dynamically populated scenario cards -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- VIEW: PROGRAMMES MANAGEMENT                   -->
+      <!-- ============================================== -->
+      <section id="view-programmes" class="view-section">
+        <div class="flex-between m-b-20">
+          <div>
+            <h2 style="font-size: 1.6rem; font-weight: 600; margin-bottom: 4px;">Simulation Programmes</h2>
+            <p style="color: var(--text-secondary); font-size: 0.9rem;">Group scenarios into educational tracks and curriculums.</p>
+          </div>
+          <button class="btn btn-primary admin-only" id="btn-create-prog" onclick="components.openProgrammeModal()" style="display: none;">
+            <i class="fa-solid fa-folder-plus"></i> New Programme
+          </button>
+        </div>
+
+        <div class="scenarios-grid" id="programmes-grid">
+          <!-- Dynamically populated programmes -->
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- VIEW: SCENARIO DETAILS VIEWER                 -->
+      <!-- ============================================== -->
+      <section id="view-scenario-detail" class="view-section">
+        <!-- Back and controls header -->
+        <div class="flex-between m-b-20" style="border-bottom: 1px solid var(--glass-border); padding-bottom: 16px;">
+          <button class="btn btn-secondary" onclick="app.navigate('dashboard')">
+            <i class="fa-solid fa-arrow-left"></i> Back to Library
+          </button>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-primary" id="btn-run-scenario-hud" style="padding: 10px 24px;">
+              <i class="fa-solid fa-play"></i> Run Simulator HUD
+            </button>
+            <button class="btn btn-emerald admin-only" id="btn-edit-scenario" style="display: none;">
+              <i class="fa-solid fa-pen-to-square"></i> Edit Scenario
+            </button>
+            <button class="btn btn-danger admin-only" id="btn-delete-scenario" style="display: none;">
+              <i class="fa-solid fa-trash"></i> Delete
+            </button>
+          </div>
+        </div>
+
+        <!-- Rendered Scenario Detail Sheet -->
+        <div id="scenario-detail-content">
+          <!-- Dynamically populated detailed report sheet -->
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- VIEW: SCENARIO EDITOR FORM (WIZARD)           -->
+      <!-- ============================================== -->
+      <section id="view-scenario-form" class="view-section">
+        <div class="flex-between m-b-20" style="border-bottom: 1px solid var(--glass-border); padding-bottom: 16px;">
+          <div>
+            <h2 id="editor-title" style="font-size: 1.6rem; font-weight: 600;">Scenario Creator</h2>
+            <p style="color: var(--text-secondary); font-size: 0.9rem;">Map simulation metadata, patient records, and progressions to the master template.</p>
+          </div>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-secondary" onclick="components.cancelForm()">
+              <i class="fa-solid fa-xmark"></i> Cancel
+            </button>
+            <button class="btn btn-emerald" onclick="components.saveScenario()">
+              <i class="fa-solid fa-floppy-disk"></i> Save Scenario
+            </button>
+          </div>
+        </div>
+
+        <div class="glass-panel">
+          <div class="editor-tabs" id="editor-tabs-container">
+            <button class="editor-tab active" onclick="components.switchEditorTab('tab-general')">1. General & Governance</button>
+            <button class="editor-tab" onclick="components.switchEditorTab('tab-outcomes')">2. Learning Outcomes</button>
+            <button class="editor-tab" onclick="components.switchEditorTab('tab-patient')">3. Patient Info & SBAR</button>
+            <button class="editor-tab" onclick="components.switchEditorTab('tab-setup')">4. Faculty & Setup</button>
+            <button class="editor-tab" onclick="components.switchEditorTab('tab-progression')">5. Scenario Progression</button>
+            <button class="editor-tab" onclick="components.switchEditorTab('tab-debrief')">6. Prebrief & Debrief</button>
+            <button class="editor-tab" onclick="components.switchEditorTab('tab-aspih')">7. ASPiH & References</button>
+          </div>
+
+          <form id="scenario-form" onsubmit="event.preventDefault();">
+            <input type="hidden" id="form-scenario-id">
+            
+            <!-- Dynamic Form Tab Contents will be populated in app.js -->
+            <div id="form-tabs-content">
+              <!-- Dynamically populated forms -->
+            </div>
+          </form>
+
+          <div style="display: flex; justify-content: space-between; border-top: 1px solid var(--glass-border); padding-top: 20px; margin-top: 20px;">
+            <button class="btn btn-secondary" id="btn-prev-tab" onclick="components.prevEditorTab()">
+              <i class="fa-solid fa-angle-left"></i> Previous Tab
+            </button>
+            <button class="btn btn-primary" id="btn-next-tab" onclick="components.nextEditorTab()">
+              Next Tab <i class="fa-solid fa-angle-right"></i>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- VIEW: INTERACTIVE RUN SIMULATOR HUD           -->
+      <!-- ============================================== -->
+      <section id="view-run-hud" class="view-section">
+        <!-- Rendered HUD will take full width -->
+        <div id="run-hud-content">
+          <!-- Dynamically populated live control interface -->
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- VIEW: INTERACTIVE PEARLS DEBRIEF FLOW          -->
+      <!-- ============================================== -->
+      <section id="view-debrief" class="view-section">
+        <div id="debrief-content">
+          <!-- Dynamically populated debrief guidelines -->
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- 3. UNIVERSAL MODAL WINDOW -->
+  <div id="modal-container" class="login-overlay" style="display: none; background: rgba(0, 0, 0, 0.6); z-index: 1500;">
+    <div class="glass-panel" id="modal-card" style="width: 500px; padding: 30px;">
+      <!-- Dynamically filled modal structure -->
+    </div>
+  </div>
+
+  <!-- 4. TOAST NOTIFICATIONS -->
+  <div id="toast-message" class="toast toast-success">
+    <i class="fa-solid fa-circle-check"></i> <span id="toast-text">Operation successful.</span>
+  </div>
+
+  <!-- CORE SCRIPTS -->
+  <script src="js/api.js"></script>
+  <script src="js/components.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
