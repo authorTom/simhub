@@ -3002,7 +3002,6 @@ const components = {
     }
   },
 
-<<<<<<< HEAD
   // --- 11. RECYCLE BIN LIFECYCLE ---
 
   async renderRecycleBinView() {
@@ -3123,5 +3122,66 @@ const components = {
       // Restore standard styles immediately
       document.body.classList.remove('pdf-printing');
     }
+  },
+
+  // --- 13. SYSTEM BACKUPS HANDLERS ---
+
+  async exportBackup() {
+    try {
+      app.showToast('Generating scenario database export...', 'success');
+      await api.exportBackup();
+      app.showToast('Scenario database exported successfully!', 'success');
+    } catch (err) {
+      console.error('Backup export error:', err);
+      app.showToast('Failed to export backup: ' + err.message, 'error');
+    }
+  },
+
+  triggerImportBackup() {
+    const fileInput = document.getElementById('backup-file-input');
+    if (fileInput) {
+      fileInput.value = ''; // Reset to ensure onchange fires for same file
+      fileInput.click();
+    }
+  },
+
+  handleImportBackup(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    app.showToast('Reading backup file...', 'success');
+
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const backupData = JSON.parse(e.target.result);
+        
+        // Basic verification
+        if (backupData.source !== 'SimHub' || !Array.isArray(backupData.scenarios)) {
+          throw new Error('Invalid backup file format. Must be a valid SimHub backup.');
+        }
+
+        if (!confirm(`Are you sure you want to import ${backupData.scenarios.length} scenarios? Any matching scenarios will be overwritten.`)) {
+          return;
+        }
+
+        app.showToast('Importing scenarios...', 'success');
+        const result = await api.importBackup(backupData);
+
+        app.showToast(`Successfully imported ${result.count} scenarios!`, 'success');
+        
+        // Refresh catalog data
+        await this.init();
+      } catch (err) {
+        console.error('Backup import error:', err);
+        app.showToast('Failed to import backup: ' + err.message, 'error');
+      }
+    };
+
+    reader.onerror = () => {
+      app.showToast('Failed to read the backup file.', 'error');
+    };
+
+    reader.readAsText(file);
   }
 };
