@@ -4,7 +4,7 @@ const fs = require('fs');
 
 const PORT = 3000;
 const URL = `http://localhost:${PORT}`;
-const SCREENSHOTS_DIR = 'C:\\Users\\thom\\.gemini\\antigravity\\brain\\30e30504-0a12-4e35-8502-f34b36150c77';
+const SCREENSHOTS_DIR = path.join(__dirname, 'public', 'screenshots');
 
 // Find local Google Chrome executable
 function getChromePath() {

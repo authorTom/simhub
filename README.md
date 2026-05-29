@@ -27,6 +27,24 @@ SimHub enables healthcare educators to draft, organise, run, and debrief high-fi
 
 ---
 
+## 📸 SimHub in Action
+
+Here is a visual overview of SimHub's premium interface and high-fidelity simulation features:
+
+| 🔐 Login Gateway | 📊 Faculty Dashboard |
+| :---: | :---: |
+| ![Login Gateway](public/screenshots/01_login_screen.png) | ![Faculty Dashboard](public/screenshots/02_dashboard.png) |
+
+| 🩺 Scenario Details | 💻 Interactive Run HUD |
+| :---: | :---: |
+| ![Scenario Details](public/screenshots/03_details.png) | ![Interactive Run HUD](public/screenshots/04_hud.png) |
+
+| 🗣️ PEARLS Debrief Guide | ☀️ High-Contrast Light Mode |
+| :---: | :---: |
+| ![PEARLS Debrief](public/screenshots/05_debrief.png) | ![Dashboard Light Mode](public/screenshots/06_dashboard_light.png) |
+
+---
+
 ## 🛠️ Technology Stack
 
 *   **Backend**: Node.js + Express.js (REST API, lightweight middleware, and static asset serving).
