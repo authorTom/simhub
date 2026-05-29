@@ -160,6 +160,12 @@ All notable changes to the SimHub platform are documented below, sorted by relea
 - **Access Level Restriction**: Restriced access to the `/api/users` routes and UI views so they are strictly accessible only to accounts holding the `Admin` role.
 - **API Integration Tests**: Created an automated validation script (`test-users-api.js`) verifying CRUD integrity and lockout guards.
 
+### [2026-05-29] - Clinical Scenario PDF Export Release
+#### Added
+- **Scenario Export to PDF**: Integrated the client-side `html2pdf.js` library to support dynamic, high-performance vector PDF downloads.
+- **Export Control Panel UI**: Positioned a standard print action button (`#btn-export-pdf`) inside the details header controls, fully accessible to both Admin and Read-Only tiers.
+- **Off-screen Layout Rendering**: Designed a print-optimized white-label clinical stylesheet (`body.pdf-printing` in `style.css`) that strips platform navigation elements and enforces high-contrast ink-saving backdrops for demographics tables, progressions, SBAR handovers, and outcomes.
+
 ---
 
 ## 📄 Licence
