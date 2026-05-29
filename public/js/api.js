@@ -128,5 +128,30 @@ const api = {
     return this.request(`/api/programmes/${id}`, {
       method: 'DELETE'
     });
+  },
+
+  // --- User Administration API ---
+  async getUsers() {
+    return this.request('/api/users');
+  },
+
+  async createUser(user) {
+    return this.request('/api/users', {
+      method: 'POST',
+      body: JSON.stringify(user)
+    });
+  },
+
+  async updateUser(email, user) {
+    return this.request(`/api/users/${email}`, {
+      method: 'PUT',
+      body: JSON.stringify(user)
+    });
+  },
+
+  async deleteUser(email) {
+    return this.request(`/api/users/${email}`, {
+      method: 'DELETE'
+    });
   }
 };
