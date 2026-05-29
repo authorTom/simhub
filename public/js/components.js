@@ -2996,5 +2996,94 @@ const components = {
     } catch (err) {
       app.showToast(err.message, 'error');
     }
+  },
+
+  // --- 11. RECYCLE BIN LIFECYCLE ---
+
+  async renderRecycleBinView() {
+    const grid = document.getElementById('recycle-bin-grid');
+    if (!grid) return;
+
+    try {
+      const scenarios = await api.getRecycleBin();
+      
+      if (scenarios.length === 0) {
+        grid.innerHTML = `
+          <div class="glass-panel" style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-secondary);">
+            <i class="fa-solid fa-trash-arrow-up" style="font-size: 2.5rem; margin-bottom: 12px; color: var(--text-muted);"></i>
+            <p>The Scenario Recycle Bin is currently empty.</p>
+          </div>
+        `;
+        return;
+      }
+
+      grid.innerHTML = scenarios.map(s => `
+        <div class="glass-panel scenario-card" style="display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <div class="scenario-card-header">
+              <span class="scenario-code">${s.code}</span>
+              <span class="badge badge-admin" style="font-size: 0.65rem; background: rgba(239, 68, 68, 0.15); color: var(--accent-red); border-color: rgba(239, 68, 68, 0.3);">
+                Deleted Scenario
+              </span>
+            </div>
+            <h3>${s.title}</h3>
+            <p class="scenario-summary-text">${s.summary || 'No summary description provided.'}</p>
+          </div>
+          
+          <div>
+            <div class="scenario-meta-row" style="border-top: 1px solid var(--glass-border); padding-top: 12px; margin-bottom: 16px; font-size: 0.8rem; color: var(--text-muted);">
+              <div class="scenario-meta-item">
+                <i class="fa-solid fa-user-pen"></i> Authors: ${s.authors || 'Unknown'}
+              </div>
+              <div class="scenario-meta-item">
+                <i class="fa-solid fa-clock"></i> Deleted: ${new Date(s.deletedAt).toLocaleString()}
+              </div>
+            </div>
+            
+            <div class="scenario-actions">
+              <button class="btn btn-emerald" onclick="components.restoreScenario('${s.id}')" style="flex: 1; padding: 8px;">
+                <i class="fa-solid fa-trash-can-arrow-up"></i> Restore
+              </button>
+              <button class="btn btn-danger" onclick="components.permanentlyDeleteScenario('${s.id}')" style="padding: 8px 12px;">
+                <i class="fa-solid fa-circle-xmark"></i> Erase
+              </button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+    } catch (err) {
+      app.showToast('Failed to load recycle bin: ' + err.message, 'error');
+    }
+  },
+
+  async restoreScenario(id) {
+    if (!confirm('Are you sure you want to restore this clinical simulation scenario back to the active library?')) return;
+
+    try {
+      await api.restoreScenario(id);
+      app.showToast('Scenario restored successfully.', 'success');
+      
+      this.allScenarios = await api.getScenarios();
+      this.renderSidebarProgrammes();
+      this.renderScenariosList();
+      
+      this.renderRecycleBinView();
+    } catch (err) {
+      app.showToast(err.message, 'error');
+    }
+  },
+
+  async permanentlyDeleteScenario(id) {
+    if (!confirm('🚨 WARNING: Are you sure you want to PERMANENTLY erase this scenario from disk? This cannot be recovered!')) return;
+    if (!confirm('Confirm secondary double-check: Erase file permanently?')) return;
+
+    try {
+      await api.permanentlyDeleteScenario(id);
+      app.showToast('Scenario permanently erased from disk.', 'success');
+      this.renderRecycleBinView();
+    } catch (err) {
+      app.showToast(err.message, 'error');
+    }
   }
 };

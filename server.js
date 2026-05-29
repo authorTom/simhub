@@ -9,9 +9,10 @@ const PORT = process.env.PORT || 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 const SCENARIOS_DIR = path.join(DATA_DIR, 'scenarios');
 const PROGRAMMES_DIR = path.join(DATA_DIR, 'programmes');
+const RECYCLE_BIN_DIR = path.join(DATA_DIR, 'recycle_bin');
 
 // Ensure directories exist
-[DATA_DIR, SCENARIOS_DIR, PROGRAMMES_DIR].forEach(dir => {
+[DATA_DIR, SCENARIOS_DIR, PROGRAMMES_DIR, RECYCLE_BIN_DIR].forEach(dir => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
@@ -221,16 +222,21 @@ app.put('/api/scenarios/:id', authenticate, requireAdmin, (req, res) => {
   }
 });
 
-// Delete scenario
+// Delete scenario (moves to recycle bin)
 app.delete('/api/scenarios/:id', authenticate, requireAdmin, (req, res) => {
   const scenarioId = req.params.id;
   const filePath = path.join(SCENARIOS_DIR, `${scenarioId}.json`);
+  const binPath = path.join(RECYCLE_BIN_DIR, `${scenarioId}.json`);
 
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'Scenario not found' });
   }
 
   try {
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    data.deletedAt = new Date().toISOString();
+
+    fs.writeFileSync(binPath, JSON.stringify(data, null, 2), 'utf8');
     fs.unlinkSync(filePath);
     
     // Also remove scenario from any programmes
@@ -244,7 +250,7 @@ app.delete('/api/scenarios/:id', authenticate, requireAdmin, (req, res) => {
       }
     });
 
-    res.json({ success: true });
+    res.json({ success: true, movedToRecycleBin: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete scenario: ' + err.message });
   }
@@ -423,6 +429,73 @@ app.delete('/api/users/:email', authenticate, requireAdmin, (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete user: ' + err.message });
+  }
+});
+
+
+// --- RECYCLE BIN ENDPOINTS ---
+
+// List deleted scenarios
+app.get('/api/recycle-bin', authenticate, requireAdmin, (req, res) => {
+  try {
+    const files = fs.readdirSync(RECYCLE_BIN_DIR);
+    const scenarios = files
+      .filter(file => file.endsWith('.json'))
+      .map(file => {
+        const filePath = path.join(RECYCLE_BIN_DIR, file);
+        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        return {
+          id: data.id,
+          code: data.code,
+          title: data.title,
+          deletedAt: data.deletedAt || new Date().toISOString(),
+          summary: data.overview?.summary || '',
+          authors: data.authors || ''
+        };
+      });
+    res.json(scenarios);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to retrieve recycle bin: ' + err.message });
+  }
+});
+
+// Restore scenario from recycle bin
+app.post('/api/recycle-bin/:id/restore', authenticate, requireAdmin, (req, res) => {
+  const scenarioId = req.params.id;
+  const binPath = path.join(RECYCLE_BIN_DIR, `${scenarioId}.json`);
+  const filePath = path.join(SCENARIOS_DIR, `${scenarioId}.json`);
+
+  if (!fs.existsSync(binPath)) {
+    return res.status(404).json({ error: 'Scenario not found in recycle bin' });
+  }
+
+  try {
+    const data = JSON.parse(fs.readFileSync(binPath, 'utf8'));
+    delete data.deletedAt;
+
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    fs.unlinkSync(binPath);
+
+    res.json({ success: true, restored: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to restore scenario: ' + err.message });
+  }
+});
+
+// Permanently delete scenario from disk
+app.delete('/api/recycle-bin/:id', authenticate, requireAdmin, (req, res) => {
+  const scenarioId = req.params.id;
+  const binPath = path.join(RECYCLE_BIN_DIR, `${scenarioId}.json`);
+
+  if (!fs.existsSync(binPath)) {
+    return res.status(404).json({ error: 'Scenario not found in recycle bin' });
+  }
+
+  try {
+    fs.unlinkSync(binPath);
+    res.json({ success: true, permanentlyDeleted: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to permanently delete scenario: ' + err.message });
   }
 });
 
