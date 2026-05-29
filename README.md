@@ -167,22 +167,10 @@ We welcome contributions to make clinical simulation more structured and accessi
 
 ## 📝 Change Log
 
-All notable changes to the SimHub platform are documented below, sorted by release date.
-
-### [2026-05-29] - User Administration & Security Release
-#### Added
-- **Persistent User Accounts**: Migrated in-memory user credentials to flat-file JSON storage (`data/users.json`), seeded dynamically on server startup.
-- **Admin CRUD REST APIs**: Implemented protected endpoints (`GET`, `POST`, `PUT`, `DELETE` under `/api/users`) guarded by Express auth and privilege middlewares.
-- **Self-Lockout Protections**: Added server-side validation rules blocking administrators from deleting their own active profile or demoting their own role from `Admin`.
-- **User Administration UI**: Built a premium SPA view (`#view-admin-users`) with dynamic initial HSL gradients, access badges, edit modal forms, deletion confirmations, and instant toast feedback.
-- **Access Level Restriction**: Restriced access to the `/api/users` routes and UI views so they are strictly accessible only to accounts holding the `Admin` role.
-- **API Integration Tests**: Created an automated validation script (`test-users-api.js`) verifying CRUD integrity and lockout guards.
-
-### [2026-05-29] - Clinical Scenario PDF Export Release
-#### Added
-- **Scenario Export to PDF**: Integrated the client-side `html2pdf.js` library to support dynamic, high-performance vector PDF downloads.
-- **Export Control Panel UI**: Positioned a standard print action button (`#btn-export-pdf`) inside the details header controls, fully accessible to both Admin and Read-Only tiers.
-- **Off-screen Layout Rendering**: Designed a print-optimized white-label clinical stylesheet (`body.pdf-printing` in `style.css`) that strips platform navigation elements and enforces high-contrast ink-saving backdrops for demographics tables, progressions, SBAR handovers, and outcomes.
+### [2026-05-29] - Feature & Security Expansion
+*   **User Administration**: Migrated credentials to JSON flat-file storage (`data/users.json`) and added Admin-only CRUD routes protected with lockout guards.
+*   **Scenario PDF Export**: Integrated client-side vector PDF downloading using `html2pdf.js` styled with print-contrast clinical layouts.
+*   **Scenario Recycle Bin**: Re-routed deletions to a recovery folder (`data/recycle_bin/`) enabling Admin-only file restoration or hard erasure.
 
 ---
 
