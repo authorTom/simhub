@@ -1215,3 +1215,102 @@ main {
   border-color: var(--glass-border);
   color: var(--text-primary);
 }
+
+/* ==========================================================================
+   CLINICAL PDF PRINTING STYLES (White-label High-contrast A4 Layout)
+   ========================================================================== */
+.pdf-print-wrapper {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  font-family: var(--font-sans);
+  padding: 10px;
+  width: 100%;
+}
+
+.pdf-print-wrapper .glass-panel {
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: none !important;
+  color: #0f172a !important;
+  margin-bottom: 20px !important;
+  padding: 20px !important;
+  transform: none !important;
+  border-radius: var(--border-radius-sm) !important;
+}
+
+.pdf-print-wrapper .glass-panel:hover {
+  box-shadow: none !important;
+  border-color: #cbd5e1 !important;
+}
+
+.pdf-print-wrapper .glass-card {
+  background: #f8fafc !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+  box-shadow: none !important;
+}
+
+.pdf-print-wrapper .meta-table th {
+  background: #f1f5f9 !important;
+  color: #334155 !important;
+  border: 1px solid #cbd5e1 !important;
+  font-weight: 600 !important;
+}
+
+.pdf-print-wrapper .meta-table td {
+  border: 1px solid #cbd5e1 !important;
+  color: #0f172a !important;
+  background: #ffffff !important;
+}
+
+.pdf-print-wrapper .scenario-code {
+  background: rgba(37, 99, 235, 0.08) !important;
+  border-color: rgba(37, 99, 235, 0.2) !important;
+  color: #2563eb !important;
+}
+
+.pdf-print-wrapper h1, 
+.pdf-print-wrapper h2, 
+.pdf-print-wrapper h3, 
+.pdf-print-wrapper h4, 
+.pdf-print-wrapper h5 {
+  color: #0f172a !important;
+}
+
+.pdf-print-wrapper .detail-section-header {
+  border-bottom: 2px solid #2563eb !important;
+  color: #1d4ed8 !important;
+  margin-top: 24px !important;
+  padding-bottom: 6px !important;
+}
+
+.pdf-print-wrapper .badge {
+  background: #f1f5f9 !important;
+  border: 1px solid #cbd5e1 !important;
+  color: #475569 !important;
+}
+
+.pdf-print-wrapper .badge-admin {
+  background: rgba(5, 150, 105, 0.08) !important;
+  border-color: rgba(5, 150, 105, 0.2) !important;
+  color: #059669 !important;
+}
+
+.pdf-print-wrapper .badge-readonly {
+  background: rgba(37, 99, 235, 0.08) !important;
+  border-color: rgba(37, 99, 235, 0.2) !important;
+  color: #2563eb !important;
+}
+
+.pdf-print-wrapper a {
+  color: #2563eb !important;
+  text-decoration: underline !important;
+}
+
+.pdf-print-wrapper code {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+  padding: 2px 4px !important;
+  border-radius: 4px !important;
+}
+

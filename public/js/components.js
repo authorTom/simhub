@@ -331,6 +331,10 @@ const components = {
 
       // Bind HUD and Edit trigger parameters
       document.getElementById('btn-run-scenario-hud').onclick = () => this.startRunHUD(id);
+      
+      const pdfBtn = document.getElementById('btn-export-pdf');
+      if (pdfBtn) pdfBtn.onclick = () => this.exportScenarioToPDF(id);
+
       const editBtn = document.getElementById('btn-edit-scenario');
       if (editBtn) editBtn.onclick = () => this.editScenarioForm(id);
       
@@ -2995,6 +2999,49 @@ const components = {
       this.renderAdminUsersView();
     } catch (err) {
       app.showToast(err.message, 'error');
+    }
+  },
+
+  async exportScenarioToPDF(scenarioId) {
+    const element = document.getElementById('scenario-detail-content');
+    if (!element) return;
+    
+    app.showToast('Generating clinical PDF report...', 'success');
+    
+    // Create a deep clone of the content to render off-screen with high-contrast print overrides
+    const clone = element.cloneNode(true);
+    
+    // Create print container
+    const printWrapper = document.createElement('div');
+    printWrapper.className = 'pdf-print-wrapper';
+    printWrapper.appendChild(clone);
+    
+    // Position off-screen so the browser renders it but it is invisible to the user
+    printWrapper.style.position = 'absolute';
+    printWrapper.style.left = '-9999px';
+    printWrapper.style.top = '0';
+    printWrapper.style.width = '800px'; // fixed page boundary for pristine rendering proportions
+    document.body.appendChild(printWrapper);
+    
+    // Configure pdf options
+    const opt = {
+      margin:       [12, 15, 12, 15],
+      filename:     `SimHub_Scenario_${scenarioId}.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, logging: false, useCORS: true, letterRendering: true },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    
+    try {
+      // Execute capture & save
+      await html2pdf().set(opt).from(printWrapper).save();
+      app.showToast('Clinical PDF scenario exported successfully!', 'success');
+    } catch (err) {
+      console.error('PDF export error:', err);
+      app.showToast('Failed to export PDF: ' + err.message, 'error');
+    } finally {
+      // Tear down the off-screen renderer
+      document.body.removeChild(printWrapper);
     }
   }
 };
