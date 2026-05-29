@@ -331,6 +331,10 @@ const components = {
 
       // Bind HUD and Edit trigger parameters
       document.getElementById('btn-run-scenario-hud').onclick = () => this.startRunHUD(id);
+      
+      const pdfBtn = document.getElementById('btn-export-pdf');
+      if (pdfBtn) pdfBtn.onclick = () => this.exportScenarioToPDF(id);
+
       const editBtn = document.getElementById('btn-edit-scenario');
       if (editBtn) editBtn.onclick = () => this.editScenarioForm(id);
       
@@ -2995,6 +2999,37 @@ const components = {
       this.renderAdminUsersView();
     } catch (err) {
       app.showToast(err.message, 'error');
+    }
+  },
+
+  async exportScenarioToPDF(scenarioId) {
+    const element = document.getElementById('scenario-detail-content');
+    if (!element) return;
+    
+    app.showToast('Generating clinical PDF report...', 'success');
+    
+    // Add printing class to body to enforce high-contrast light styles and hide layout headers
+    document.body.classList.add('pdf-printing');
+    
+    // Configure pdf options
+    const opt = {
+      margin:       [12, 15, 12, 15],
+      filename:     `SimHub_Scenario_${scenarioId}.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2, logging: false, useCORS: true, letterRendering: true },
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    
+    try {
+      // Execute capture & save directly on the active, correctly layouted DOM element
+      await html2pdf().set(opt).from(element).save();
+      app.showToast('Clinical PDF scenario exported successfully!', 'success');
+    } catch (err) {
+      console.error('PDF export error:', err);
+      app.showToast('Failed to export PDF: ' + err.message, 'error');
+    } finally {
+      // Restore standard styles immediately
+      document.body.classList.remove('pdf-printing');
     }
   }
 };
