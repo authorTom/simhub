@@ -212,6 +212,76 @@ async function runTests() {
     assert(verifyDeleteRes.status === 404, 'Persistence check: Deleted scenario returns 404 Not Found');
 
     // -------------------------------------------------------------
+    // TEST 10: Export Backups (Admin)
+    // -------------------------------------------------------------
+    console.log('\nTesting Backup Export (Admin)...');
+    const exportAdminRes = await request('/api/backup/export', 'GET', null, adminToken);
+    assert(exportAdminRes.status === 200, 'Exporting backups returns 200 OK');
+    assert(exportAdminRes.body.source === 'SimHub', 'Exported backup reports correct source');
+    assert(Array.isArray(exportAdminRes.body.scenarios), 'Exported backup contains a scenarios array');
+    assert(exportAdminRes.body.scenarios.length > 0, 'Exported backup contains at least one scenario');
+    assert(exportAdminRes.body.scenarios.some(s => s.id === 'scenario_sam_phillips'), 'Exported backup has Sam Phillips scenario');
+
+    // Save the backup for the import test
+    const backupPayload = exportAdminRes.body;
+
+    // -------------------------------------------------------------
+    // TEST 11: Export Backups (Faculty - Blocked)
+    // -------------------------------------------------------------
+    console.log('\nTesting Backup Export Role Restrictions (Faculty)...');
+    const exportFacultyRes = await request('/api/backup/export', 'GET', null, facultyToken);
+    assert(exportFacultyRes.status === 403, 'Faculty backup export is blocked with 403 Forbidden');
+
+    // -------------------------------------------------------------
+    // TEST 12: Import Backups (Faculty - Blocked)
+    // -------------------------------------------------------------
+    console.log('\nTesting Backup Import Role Restrictions (Faculty)...');
+    const importFacultyRes = await request('/api/backup/import', 'POST', backupPayload, facultyToken);
+    assert(importFacultyRes.status === 403, 'Faculty backup import is blocked with 403 Forbidden');
+
+    // -------------------------------------------------------------
+    // TEST 13: Import Backups (Admin)
+    // -------------------------------------------------------------
+    console.log('\nTesting Backup Import (Admin)...');
+    
+    // Add a unique scenario to the backup payload to test import persistence
+    const testImportScenario = {
+      id: 'scenario_imported_test',
+      code: 'IMPORT-TEST-01',
+      title: 'Imported Test Scenario',
+      version: '1.2',
+      lastReviewed: '29/05/2026',
+      nextReviewDue: '29/05/2029',
+      overview: {
+        summary: 'A programmatic scenario to verify backup imports.',
+        targetLearners: 'System Admins',
+        modality: 'Unit Test',
+        duration: 5,
+        debriefDuration: 10,
+        totalSessionTime: 15
+      }
+    };
+    
+    const modifiedBackupPayload = {
+      ...backupPayload,
+      scenarios: [...backupPayload.scenarios, testImportScenario]
+    };
+
+    const importAdminRes = await request('/api/backup/import', 'POST', modifiedBackupPayload, adminToken);
+    assert(importAdminRes.status === 200, 'Importing backup returns 200 OK');
+    assert(importAdminRes.body.success === true, 'Import reports success');
+    assert(importAdminRes.body.count > 1, 'Import reports that multiple scenarios were imported');
+
+    // Verify imported scenario is readable from endpoints
+    const verifyImportRes = await request('/api/scenarios/scenario_imported_test', 'GET', null, adminToken);
+    assert(verifyImportRes.status === 200, 'Fetching newly imported scenario returns 200 OK');
+    assert(verifyImportRes.body.title === 'Imported Test Scenario', 'Imported scenario details match database exactly');
+
+    // Clean up: delete imported test scenario
+    await request('/api/scenarios/scenario_imported_test', 'DELETE', null, adminToken);
+    await request('/api/recycle-bin/scenario_imported_test', 'DELETE', null, adminToken);
+
+    // -------------------------------------------------------------
     // SUMMARY OF INTEGRATION TEST
     // -------------------------------------------------------------
     console.log('\n=== QA INTEGRATION TEST COMPLETE ===');

@@ -19,7 +19,7 @@ const RECYCLE_BIN_DIR = path.join(DATA_DIR, 'recycle_bin');
 });
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Simple Token-based Auth System
@@ -496,6 +496,60 @@ app.delete('/api/recycle-bin/:id', authenticate, requireAdmin, (req, res) => {
     res.json({ success: true, permanentlyDeleted: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to permanently delete scenario: ' + err.message });
+  }
+});
+
+
+// --- BACKUP ENDPOINTS ---
+
+// Export backups
+app.get('/api/backup/export', authenticate, requireAdmin, (req, res) => {
+  try {
+    const files = fs.readdirSync(SCENARIOS_DIR);
+    const scenarios = files
+      .filter(file => file.endsWith('.json'))
+      .map(file => {
+        const filePath = path.join(SCENARIOS_DIR, file);
+        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      });
+
+    const backup = {
+      source: 'SimHub',
+      version: '1.0.0',
+      exportedAt: new Date().toISOString(),
+      scenarios
+    };
+
+    const formattedDate = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Disposition', `attachment; filename=simhub_backup_${formattedDate}.json`);
+    res.setHeader('Content-Type', 'application/json');
+    res.send(JSON.stringify(backup, null, 2));
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to generate backup: ' + err.message });
+  }
+});
+
+// Import backups
+app.post('/api/backup/import', authenticate, requireAdmin, (req, res) => {
+  const { source, scenarios } = req.body;
+
+  if (source !== 'SimHub' || !Array.isArray(scenarios)) {
+    return res.status(400).json({ error: 'Invalid backup file format. Must be a valid SimHub backup.' });
+  }
+
+  try {
+    let importCount = 0;
+    scenarios.forEach(scenario => {
+      if (scenario.id && scenario.title && scenario.code) {
+        const filePath = path.join(SCENARIOS_DIR, `${scenario.id}.json`);
+        fs.writeFileSync(filePath, JSON.stringify(scenario, null, 2), 'utf8');
+        importCount++;
+      }
+    });
+
+    res.json({ success: true, count: importCount });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to import backup: ' + err.message });
   }
 });
 

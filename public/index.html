@@ -107,6 +107,17 @@
               <button class="btn btn-secondary" style="width: 100%; margin-top: 8px;" onclick="app.navigate('recycle-bin')">
                 <i class="fa-solid fa-trash-can"></i> Recycle Bin
               </button>
+
+              <h3 style="font-size: 1rem; margin-top: 20px; margin-bottom: 12px; color: var(--accent-blue);">
+                <i class="fa-solid fa-database"></i> Backup & Restore
+              </h3>
+              <button class="btn btn-secondary" style="width: 100%; margin-bottom: 8px;" onclick="components.exportBackup()">
+                <i class="fa-solid fa-download"></i> Export Backups
+              </button>
+              <button class="btn btn-secondary" style="width: 100%;" onclick="components.triggerImportBackup()">
+                <i class="fa-solid fa-upload"></i> Import Backups
+              </button>
+              <input type="file" id="backup-file-input" accept=".json" style="display:none;" onchange="components.handleImportBackup(event)">
             </div>
           </div>
 

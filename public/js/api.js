@@ -170,5 +170,37 @@ const api = {
     return this.request(`/api/recycle-bin/${id}`, {
       method: 'DELETE'
     });
+  },
+
+  // --- Backup API ---
+  async exportBackup() {
+    const response = await fetch('/api/backup/export', {
+      headers: {
+        'Authorization': `Bearer ${this.token}`
+      }
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      const errorMsg = errData.error || `HTTP error! status: ${response.status}`;
+      throw new Error(errorMsg);
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `simhub_backup_${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  },
+
+  async importBackup(backupData) {
+    return this.request('/api/backup/import', {
+      method: 'POST',
+      body: JSON.stringify(backupData)
+    });
   }
 };
