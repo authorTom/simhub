@@ -21,6 +21,7 @@ SimHub enables healthcare educators to draft, organise, run, and debrief high-fi
 *   **PEARLS Debriefing Guide**: Integrated debrief template using the PEARLS (Promoting Excellence and Reflective Learning in Simulation) framework, featuring structural prompts for *Reactions*, *Description*, *Analysis* (Advocacy-Inquiry, Directive Feedback, Plus-Delta), and *Summary*.
 *   **Curriculum Programme Mapping**: Group scenarios into specific academic or clinical development tracks (e.g., Year 5 Undergraduate Medicine, Foundation Year 1 Induction).
 *   **Role-Based Security**: Built-in simple token authentication with distinct access rules for **Admin** (Full CRUD) and **Clinical Faculty** (Read-Only catalog exploration and interactive runs).
+*   **User Administration Area**: A premium, secure control panel for Admin users to add, edit, and delete faculty access accounts, configure permissions, and manage passwords, equipped with self-lockout guards.
 *   **Premium Visuals & Dual Themes**: Modern, high-contrast dark mode and premium light mode layouts built with clean, zero-dependency responsive styles.
 *   **Robust QA & UI Test Suites**: Bundled integration tests verifying REST endpoints and Puppeteer end-to-end headless browser workflows for scenario compilation.
 
@@ -114,7 +115,8 @@ simhub/
 │   └── ISSUE_TEMPLATE/        # Standard Bug & Feature Requests
 ├── data/                      # Local JSON Flat-File Database (git ignored)
 │   ├── scenarios/             # Mapped Scenario Files
-│   └── programmes/            # Structured Programme Tracks
+│   ├── programmes/            # Structured Programme Tracks
+│   └── users.json             # Persistent Faculty Access Profiles
 ├── public/                    # Frontend Static Files
 │   ├── css/                   # Premium styles and themes
 │   ├── js/                    # SPA logic & state controller
@@ -142,6 +144,21 @@ We welcome contributions to make clinical simulation more structured and accessi
 3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`).
 4.  Push to the Branch (`git push origin feature/AmazingFeature`).
 5.  Open a Pull Request.
+
+---
+
+## 📝 Change Log
+
+All notable changes to the SimHub platform are documented below, sorted by release date.
+
+### [2026-05-29] - User Administration & Security Release
+#### Added
+- **Persistent User Accounts**: Migrated in-memory user credentials to flat-file JSON storage (`data/users.json`), seeded dynamically on server startup.
+- **Admin CRUD REST APIs**: Implemented protected endpoints (`GET`, `POST`, `PUT`, `DELETE` under `/api/users`) guarded by Express auth and privilege middlewares.
+- **Self-Lockout Protections**: Added server-side validation rules blocking administrators from deleting their own active profile or demoting their own role from `Admin`.
+- **User Administration UI**: Built a premium SPA view (`#view-admin-users`) with dynamic initial HSL gradients, access badges, edit modal forms, deletion confirmations, and instant toast feedback.
+- **Access Level Restriction**: Restriced access to the `/api/users` routes and UI views so they are strictly accessible only to accounts holding the `Admin` role.
+- **API Integration Tests**: Created an automated validation script (`test-users-api.js`) verifying CRUD integrity and lockout guards.
 
 ---
 
