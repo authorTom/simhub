@@ -168,6 +168,8 @@ We welcome contributions to make clinical simulation more structured and accessi
 ## 📝 Change Log
 
 ### [2026-05-29] - Feature & Security Expansion
+*   **Scenario Backup & Restore (Export/Import)**: Added secure, Admin-only JSON scenario database export and import endpoints protected by Bearer token auth, integrated a premium sidebar control widget, and expanded Puppeteer/QA test suites to 37 successful checkpoints.
+*   **Clinical Code Base Fixes**: Resolved a leftover conflict marker (`<<<<<<< HEAD`) in `components.js` to restore flawless, instant catalog loading.
 *   **User Administration**: Migrated credentials to JSON flat-file storage (`data/users.json`) and added Admin-only CRUD routes protected with lockout guards.
 *   **Scenario PDF Export**: Integrated client-side vector PDF downloading using `html2pdf.js` styled with print-contrast clinical layouts.
 *   **Scenario Recycle Bin**: Re-routed deletions to a recovery folder (`data/recycle_bin/`) enabling Admin-only file restoration or hard erasure.
