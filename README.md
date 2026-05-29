@@ -27,6 +27,24 @@ SimHub enables healthcare educators to draft, organise, run, and debrief high-fi
 
 ---
 
+## 📸 SimHub in Action
+
+Here is a visual overview of SimHub's premium interface and high-fidelity simulation features:
+
+| 🔐 Login Gateway | 📊 Faculty Dashboard |
+| :---: | :---: |
+| ![Login Gateway](public/screenshots/01_login_screen.png) | ![Faculty Dashboard](public/screenshots/02_dashboard.png) |
+
+| 🩺 Scenario Details | 💻 Interactive Run HUD |
+| :---: | :---: |
+| ![Scenario Details](public/screenshots/03_details.png) | ![Interactive Run HUD](public/screenshots/04_hud.png) |
+
+| 🗣️ PEARLS Debrief Guide | ☀️ High-Contrast Light Mode |
+| :---: | :---: |
+| ![PEARLS Debrief](public/screenshots/05_debrief.png) | ![Dashboard Light Mode](public/screenshots/06_dashboard_light.png) |
+
+---
+
 ## 🛠️ Technology Stack
 
 *   **Backend**: Node.js + Express.js (REST API, lightweight middleware, and static asset serving).
@@ -159,6 +177,12 @@ All notable changes to the SimHub platform are documented below, sorted by relea
 - **User Administration UI**: Built a premium SPA view (`#view-admin-users`) with dynamic initial HSL gradients, access badges, edit modal forms, deletion confirmations, and instant toast feedback.
 - **Access Level Restriction**: Restriced access to the `/api/users` routes and UI views so they are strictly accessible only to accounts holding the `Admin` role.
 - **API Integration Tests**: Created an automated validation script (`test-users-api.js`) verifying CRUD integrity and lockout guards.
+
+### [2026-05-29] - Clinical Scenario PDF Export Release
+#### Added
+- **Scenario Export to PDF**: Integrated the client-side `html2pdf.js` library to support dynamic, high-performance vector PDF downloads.
+- **Export Control Panel UI**: Positioned a standard print action button (`#btn-export-pdf`) inside the details header controls, fully accessible to both Admin and Read-Only tiers.
+- **Off-screen Layout Rendering**: Designed a print-optimized white-label clinical stylesheet (`body.pdf-printing` in `style.css`) that strips platform navigation elements and enforces high-contrast ink-saving backdrops for demographics tables, progressions, SBAR handovers, and outcomes.
 
 ---
 
