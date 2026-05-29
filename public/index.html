@@ -58,6 +58,9 @@
         <button class="nav-button admin-only" id="nav-btn-new-scenario" onclick="app.navigate('scenario-form-new')" style="display: none;">
           <i class="fa-solid fa-square-plus"></i> New Scenario
         </button>
+        <button class="nav-button admin-only" id="nav-btn-admin-users" onclick="app.navigate('admin-users')" style="display: none;">
+          <i class="fa-solid fa-users-gear"></i> Users
+        </button>
       </nav>
 
       <div class="user-profile">
@@ -119,6 +122,25 @@
               <!-- Dynamically populated scenario cards -->
             </div>
           </div>
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- VIEW: USER ADMINISTRATION                     -->
+      <!-- ============================================== -->
+      <section id="view-admin-users" class="view-section admin-only" style="display: none;">
+        <div class="flex-between m-b-20" style="margin-bottom: 20px;">
+          <div>
+            <h2 style="font-size: 1.6rem; font-weight: 600; margin-bottom: 4px;">User Administration</h2>
+            <p style="color: var(--text-secondary); font-size: 0.9rem;">Manage clinical faculty access accounts, credentials, and system permissions.</p>
+          </div>
+          <button class="btn btn-emerald" onclick="components.openUserModal()">
+            <i class="fa-solid fa-user-plus"></i> Add New User
+          </button>
+        </div>
+
+        <div class="scenarios-grid" id="admin-users-grid">
+          <!-- Dynamically populated user cards -->
         </div>
       </section>
 

@@ -112,6 +112,12 @@ const app = {
     if (newScenarioNav) {
       newScenarioNav.style.display = isAdmin ? 'flex' : 'none';
     }
+
+    // Admin users navbar nav-button
+    const adminUsersNav = document.getElementById('nav-btn-admin-users');
+    if (adminUsersNav) {
+      adminUsersNav.style.display = isAdmin ? 'flex' : 'none';
+    }
   },
 
   // --- SPA ROUTING ---
@@ -133,11 +139,14 @@ const app = {
 
     // Highlight active link
     if (viewId === 'dashboard') {
-      navButtons[0].classList.add('active');
+      if (navButtons[0]) navButtons[0].classList.add('active');
     } else if (viewId === 'programmes') {
-      navButtons[1].classList.add('active');
+      if (navButtons[1]) navButtons[1].classList.add('active');
     } else if (viewId.startsWith('scenario-form')) {
       if (navButtons[2]) navButtons[2].classList.add('active');
+    } else if (viewId === 'admin-users') {
+      const usersBtn = document.getElementById('nav-btn-admin-users');
+      if (usersBtn) usersBtn.classList.add('active');
     }
 
     // Toggle CSS views sections
@@ -159,6 +168,8 @@ const app = {
       components.selectProgramme(components.activeProgrammeId); // re-filter scenario library
     } else if (viewId === 'programmes') {
       components.renderProgrammesView();
+    } else if (viewId === 'admin-users') {
+      components.renderAdminUsersView();
     }
   },
 

@@ -2826,5 +2826,175 @@ const components = {
       app.showToast('Clinical debrief log compiled and saved.', 'success');
       app.navigate('dashboard');
     }
+  },
+
+  // --- 10. USER ADMINISTRATION LIFECYCLE ---
+
+  async renderAdminUsersView() {
+    const grid = document.getElementById('admin-users-grid');
+    if (!grid) return;
+
+    try {
+      const users = await api.getUsers();
+      
+      grid.innerHTML = users.map(u => {
+        const isSelf = u.email.toLowerCase() === api.user.email.toLowerCase();
+        const roleBadgeClass = u.role === 'Admin' ? 'badge badge-admin' : 'badge badge-readonly';
+        
+        return `
+          <div class="glass-panel scenario-card" style="display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <div class="scenario-card-header">
+                <span class="scenario-code" style="font-size: 0.75rem;">${u.email}</span>
+                <span class="${roleBadgeClass}" style="font-size: 0.65rem;">
+                  ${u.role}
+                </span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 16px; margin: 15px 0;">
+                <div style="background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple)); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.25rem; font-weight: 700; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);">
+                  ${u.name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h3 style="margin: 0; font-size: 1.2rem; font-weight: 600;">${u.name} ${isSelf ? '<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">(You)</span>' : ''}</h3>
+                  <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 2px;">Faculty Account</p>
+                </div>
+              </div>
+            </div>
+            
+            <div>
+              <div class="scenario-meta-row" style="border-top: 1px solid var(--glass-border); padding-top: 12px; margin-bottom: 16px; font-size: 0.8rem; color: var(--text-muted);">
+                <div class="scenario-meta-item">
+                  <i class="fa-solid fa-key"></i> Pass: <code>••••••••</code>
+                </div>
+                <div class="scenario-meta-item">
+                  <i class="fa-solid fa-shield-halved"></i> Permissions: <strong>${u.role === 'Admin' ? 'Read/Write' : 'Read-Only'}</strong>
+                </div>
+              </div>
+              
+              <div class="scenario-actions">
+                <button class="btn btn-secondary" onclick="components.openUserModal('${u.email}')" style="flex: 1; padding: 8px;">
+                  <i class="fa-solid fa-pen-to-square"></i> Edit
+                </button>
+                <button class="btn btn-danger" onclick="components.deleteUser('${u.email}')" ${isSelf ? 'disabled' : ''} style="padding: 8px 12px;" title="${isSelf ? 'You cannot delete yourself.' : ''}">
+                  <i class="fa-solid fa-trash"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+    } catch (err) {
+      app.showToast('Failed to load users: ' + err.message, 'error');
+    }
+  },
+
+  async openUserModal(userEmail = null) {
+    const modal = document.getElementById('modal-container');
+    const modalContent = document.getElementById('modal-card');
+    if (!modal || !modalContent) return;
+
+    let existing = null;
+    if (userEmail) {
+      try {
+        const users = await api.getUsers();
+        existing = users.find(u => u.email.toLowerCase() === userEmail.toLowerCase());
+      } catch (err) {
+        app.showToast(err.message, 'error');
+        return;
+      }
+    }
+
+    const isSelf = existing && existing.email.toLowerCase() === api.user.email.toLowerCase();
+
+    modalContent.innerHTML = `
+      <div class="flex-between m-b-20" style="margin-bottom: 20px;">
+        <h3 style="font-size:1.3rem; color: var(--accent-blue);">
+          <i class="fa-solid fa-user-gear"></i> ${existing ? 'Edit Faculty User' : 'Add New Faculty User'}
+        </h3>
+        <button onclick="components.closeModal()" style="background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.2rem;">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form id="user-modal-form" onsubmit="components.saveUser(event, ${existing ? `'${existing.email}'` : 'null'})">
+        <div class="form-group">
+          <label for="user-email">Faculty Email Address</label>
+          <input type="text" id="user-email" required value="${existing ? existing.email : ''}" ${existing ? 'disabled' : ''} placeholder="e.g. nurse.smith@simhub.local">
+        </div>
+        <div class="form-group">
+          <label for="user-name">Full Name</label>
+          <input type="text" id="user-name" required value="${existing ? existing.name : ''}" placeholder="e.g. Dr. Jane Smith">
+        </div>
+        <div class="form-group">
+          <label for="user-password">Access Password</label>
+          <input type="text" id="user-password" required value="${existing ? existing.password : ''}" placeholder="Enter robust access password">
+        </div>
+        <div class="form-group">
+          <label for="user-role">System Permission Level</label>
+          <select id="user-role" required ${isSelf ? 'disabled' : ''}>
+            <option value="Admin" ${existing && existing.role === 'Admin' ? 'selected' : ''}>Admin (Full Read/Write Access)</option>
+            <option value="Read-Only" ${existing && existing.role === 'Read-Only' ? 'selected' : ''}>Read-Only (Faculty Access)</option>
+          </select>
+          ${isSelf ? '<p style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;"><i class="fa-solid fa-triangle-exclamation"></i> You cannot change your own role to avoid self-lockout.</p>' : ''}
+        </div>
+        
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+          <button type="button" class="btn btn-secondary" onclick="components.closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-emerald">
+            <i class="fa-solid fa-floppy-disk"></i> Save Faculty
+          </button>
+        </div>
+      </form>
+    `;
+
+    modal.style.display = 'flex';
+  },
+
+  async saveUser(e, existingEmail) {
+    e.preventDefault();
+    const name = document.getElementById('user-name').value;
+    const password = document.getElementById('user-password').value;
+    const roleSelect = document.getElementById('user-role');
+    const role = roleSelect.value;
+    
+    try {
+      if (existingEmail) {
+        await api.updateUser(existingEmail, { name, password, role });
+        app.showToast('Faculty user updated successfully.', 'success');
+        
+        if (existingEmail.toLowerCase() === api.user.email.toLowerCase()) {
+          api.user.name = name;
+          localStorage.setItem('simhub_user', JSON.stringify(api.user));
+          document.getElementById('user-display-name').innerText = name;
+        }
+      } else {
+        const email = document.getElementById('user-email').value;
+        await api.createUser({ email, name, password, role });
+        app.showToast('New faculty user created successfully.', 'success');
+      }
+      
+      this.closeModal();
+      this.renderAdminUsersView();
+    } catch (err) {
+      app.showToast(err.message, 'error');
+    }
+  },
+
+  async deleteUser(email) {
+    if (email.toLowerCase() === api.user.email.toLowerCase()) {
+      app.showToast('Self-deletion is blocked to prevent system lockout.', 'error');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to permanently delete faculty account: ${email}?`)) return;
+
+    try {
+      await api.deleteUser(email);
+      app.showToast('Faculty user deleted successfully.', 'success');
+      this.renderAdminUsersView();
+    } catch (err) {
+      app.showToast(err.message, 'error');
+    }
   }
 };

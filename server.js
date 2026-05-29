@@ -24,7 +24,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Simple Token-based Auth System
 const SESSIONS = new Map(); // token -> user details
 
-const USERS = {
+let USERS = {};
+const USERS_FILE = path.join(DATA_DIR, 'users.json');
+
+const DEFAULT_USERS = {
   'admin@simhub.local': {
     email: 'admin@simhub.local',
     password: 'admin123',
@@ -38,6 +41,28 @@ const USERS = {
     name: 'Clinical Faculty'
   }
 };
+
+function loadUsers() {
+  if (fs.existsSync(USERS_FILE)) {
+    try {
+      USERS = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+    } catch (e) {
+      console.error('Error reading users file, resetting to default:', e);
+      USERS = { ...DEFAULT_USERS };
+      saveUsers();
+    }
+  } else {
+    USERS = { ...DEFAULT_USERS };
+    saveUsers();
+  }
+}
+
+function saveUsers() {
+  fs.writeFileSync(USERS_FILE, JSON.stringify(USERS, null, 2), 'utf8');
+}
+
+loadUsers();
+
 
 // Auth middleware
 function authenticate(req, res, next) {
@@ -302,6 +327,102 @@ app.delete('/api/programmes/:id', authenticate, requireAdmin, (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete programme: ' + err.message });
+  }
+});
+
+
+// --- USER ADMINISTRATION ENDPOINTS ---
+
+// List all users
+app.get('/api/users', authenticate, requireAdmin, (req, res) => {
+  try {
+    const usersList = Object.values(USERS).map(u => ({
+      email: u.email,
+      name: u.name,
+      role: u.role,
+      password: u.password
+    }));
+    res.json(usersList);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to retrieve users: ' + err.message });
+  }
+});
+
+// Create new user
+app.post('/api/users', authenticate, requireAdmin, (req, res) => {
+  const { email, password, role, name } = req.body;
+  if (!email || !password || !role || !name) {
+    return res.status(400).json({ error: 'All fields (email, password, role, name) are required.' });
+  }
+
+  const normalizedEmail = email.toLowerCase().trim();
+  if (USERS[normalizedEmail]) {
+    return res.status(400).json({ error: 'A user with this email already exists.' });
+  }
+
+  USERS[normalizedEmail] = {
+    email: normalizedEmail,
+    password,
+    role,
+    name
+  };
+
+  try {
+    saveUsers();
+    res.status(201).json(USERS[normalizedEmail]);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save new user: ' + err.message });
+  }
+});
+
+// Update user details
+app.put('/api/users/:email', authenticate, requireAdmin, (req, res) => {
+  const targetEmail = req.params.email.toLowerCase().trim();
+  const { password, role, name } = req.body;
+
+  if (!USERS[targetEmail]) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
+
+  if (!password || !role || !name) {
+    return res.status(400).json({ error: 'All fields (password, role, name) are required.' });
+  }
+
+  if (targetEmail === req.user.email.toLowerCase() && role !== 'Admin') {
+    return res.status(400).json({ error: 'Demotion prevented. You cannot change your own role from Admin.' });
+  }
+
+  USERS[targetEmail].name = name;
+  USERS[targetEmail].role = role;
+  USERS[targetEmail].password = password;
+
+  try {
+    saveUsers();
+    res.json(USERS[targetEmail]);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update user: ' + err.message });
+  }
+});
+
+// Delete user
+app.delete('/api/users/:email', authenticate, requireAdmin, (req, res) => {
+  const targetEmail = req.params.email.toLowerCase().trim();
+
+  if (!USERS[targetEmail]) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
+
+  if (targetEmail === req.user.email.toLowerCase()) {
+    return res.status(400).json({ error: 'Self-deletion prevented. You cannot delete your own active account.' });
+  }
+
+  delete USERS[targetEmail];
+
+  try {
+    saveUsers();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete user: ' + err.message });
   }
 });
 
