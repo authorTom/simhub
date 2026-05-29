@@ -170,6 +170,8 @@ const app = {
       components.renderProgrammesView();
     } else if (viewId === 'admin-users') {
       components.renderAdminUsersView();
+    } else if (viewId === 'recycle-bin') {
+      components.renderRecycleBinView();
     }
   },
 

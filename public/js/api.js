@@ -153,5 +153,22 @@ const api = {
     return this.request(`/api/users/${email}`, {
       method: 'DELETE'
     });
+  },
+
+  // --- Recycle Bin API ---
+  async getRecycleBin() {
+    return this.request('/api/recycle-bin');
+  },
+
+  async restoreScenario(id) {
+    return this.request(`/api/recycle-bin/${id}/restore`, {
+      method: 'POST'
+    });
+  },
+
+  async permanentlyDeleteScenario(id) {
+    return this.request(`/api/recycle-bin/${id}`, {
+      method: 'DELETE'
+    });
   }
 };

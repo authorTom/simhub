@@ -104,6 +104,9 @@
               <button class="btn btn-secondary" style="width: 100%;" onclick="components.openProgrammeModal()">
                 <i class="fa-solid fa-folder-plus"></i> Create Programme
               </button>
+              <button class="btn btn-secondary" style="width: 100%; margin-top: 8px;" onclick="app.navigate('recycle-bin')">
+                <i class="fa-solid fa-trash-can"></i> Recycle Bin
+              </button>
             </div>
           </div>
 
@@ -141,6 +144,25 @@
 
         <div class="scenarios-grid" id="admin-users-grid">
           <!-- Dynamically populated user cards -->
+        </div>
+      </section>
+
+      <!-- ============================================== -->
+      <!-- VIEW: RECYCLE BIN                             -->
+      <!-- ============================================== -->
+      <section id="view-recycle-bin" class="view-section admin-only" style="display: none;">
+        <div class="flex-between m-b-20" style="margin-bottom: 20px;">
+          <div>
+            <h2 style="font-size: 1.6rem; font-weight: 600; margin-bottom: 4px;">Scenario Recycle Bin</h2>
+            <p style="color: var(--text-secondary); font-size: 0.9rem;">Recover previously deleted clinical simulation scenarios or permanently erase them from disk.</p>
+          </div>
+          <button class="btn btn-secondary" onclick="app.navigate('dashboard')">
+            <i class="fa-solid fa-arrow-left"></i> Back to Dashboard
+          </button>
+        </div>
+
+        <div class="scenarios-grid" id="recycle-bin-grid">
+          <!-- Dynamically populated deleted scenario cards -->
         </div>
       </section>
 
