@@ -3008,20 +3008,8 @@ const components = {
     
     app.showToast('Generating clinical PDF report...', 'success');
     
-    // Create a deep clone of the content to render off-screen with high-contrast print overrides
-    const clone = element.cloneNode(true);
-    
-    // Create print container
-    const printWrapper = document.createElement('div');
-    printWrapper.className = 'pdf-print-wrapper';
-    printWrapper.appendChild(clone);
-    
-    // Position off-screen so the browser renders it but it is invisible to the user
-    printWrapper.style.position = 'absolute';
-    printWrapper.style.left = '-9999px';
-    printWrapper.style.top = '0';
-    printWrapper.style.width = '800px'; // fixed page boundary for pristine rendering proportions
-    document.body.appendChild(printWrapper);
+    // Add printing class to body to enforce high-contrast light styles and hide layout headers
+    document.body.classList.add('pdf-printing');
     
     // Configure pdf options
     const opt = {
@@ -3033,15 +3021,15 @@ const components = {
     };
     
     try {
-      // Execute capture & save
-      await html2pdf().set(opt).from(printWrapper).save();
+      // Execute capture & save directly on the active, correctly layouted DOM element
+      await html2pdf().set(opt).from(element).save();
       app.showToast('Clinical PDF scenario exported successfully!', 'success');
     } catch (err) {
       console.error('PDF export error:', err);
       app.showToast('Failed to export PDF: ' + err.message, 'error');
     } finally {
-      // Tear down the off-screen renderer
-      document.body.removeChild(printWrapper);
+      // Restore standard styles immediately
+      document.body.classList.remove('pdf-printing');
     }
   }
 };

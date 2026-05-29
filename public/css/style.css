@@ -1219,15 +1219,36 @@ main {
 /* ==========================================================================
    CLINICAL PDF PRINTING STYLES (White-label High-contrast A4 Layout)
    ========================================================================== */
-.pdf-print-wrapper {
+body.pdf-printing {
   background-color: #ffffff !important;
+  background-image: none !important;
   color: #0f172a !important;
-  font-family: var(--font-sans);
-  padding: 10px;
-  width: 100%;
 }
 
-.pdf-print-wrapper .glass-panel {
+body.pdf-printing #app-shell {
+  background-color: #ffffff !important;
+  background-image: none !important;
+}
+
+body.pdf-printing header,
+body.pdf-printing nav,
+body.pdf-printing .user-profile,
+body.pdf-printing #btn-export-pdf,
+body.pdf-printing #btn-run-scenario-hud,
+body.pdf-printing #btn-edit-scenario,
+body.pdf-printing #btn-delete-scenario,
+body.pdf-printing .flex-between button,
+body.pdf-printing .scenario-actions {
+  display: none !important;
+}
+
+body.pdf-printing main {
+  padding: 0 !important;
+  margin: 0 !important;
+  max-width: 100% !important;
+}
+
+body.pdf-printing .glass-panel {
   background: #ffffff !important;
   border: 1px solid #cbd5e1 !important;
   box-shadow: none !important;
@@ -1238,79 +1259,78 @@ main {
   border-radius: var(--border-radius-sm) !important;
 }
 
-.pdf-print-wrapper .glass-panel:hover {
+body.pdf-printing .glass-panel:hover {
   box-shadow: none !important;
   border-color: #cbd5e1 !important;
 }
 
-.pdf-print-wrapper .glass-card {
+body.pdf-printing .glass-card {
   background: #f8fafc !important;
   border: 1px solid #cbd5e1 !important;
   color: #0f172a !important;
   box-shadow: none !important;
 }
 
-.pdf-print-wrapper .meta-table th {
+body.pdf-printing .meta-table th {
   background: #f1f5f9 !important;
   color: #334155 !important;
   border: 1px solid #cbd5e1 !important;
   font-weight: 600 !important;
 }
 
-.pdf-print-wrapper .meta-table td {
+body.pdf-printing .meta-table td {
   border: 1px solid #cbd5e1 !important;
   color: #0f172a !important;
   background: #ffffff !important;
 }
 
-.pdf-print-wrapper .scenario-code {
+body.pdf-printing .scenario-code {
   background: rgba(37, 99, 235, 0.08) !important;
   border-color: rgba(37, 99, 235, 0.2) !important;
   color: #2563eb !important;
 }
 
-.pdf-print-wrapper h1, 
-.pdf-print-wrapper h2, 
-.pdf-print-wrapper h3, 
-.pdf-print-wrapper h4, 
-.pdf-print-wrapper h5 {
+body.pdf-printing h1, 
+body.pdf-printing h2, 
+body.pdf-printing h3, 
+body.pdf-printing h4, 
+body.pdf-printing h5 {
   color: #0f172a !important;
 }
 
-.pdf-print-wrapper .detail-section-header {
+body.pdf-printing .detail-section-header {
   border-bottom: 2px solid #2563eb !important;
   color: #1d4ed8 !important;
   margin-top: 24px !important;
   padding-bottom: 6px !important;
 }
 
-.pdf-print-wrapper .badge {
+body.pdf-printing .badge {
   background: #f1f5f9 !important;
   border: 1px solid #cbd5e1 !important;
   color: #475569 !important;
 }
 
-.pdf-print-wrapper .badge-admin {
+body.pdf-printing .badge-admin {
   background: rgba(5, 150, 105, 0.08) !important;
   border-color: rgba(5, 150, 105, 0.2) !important;
   color: #059669 !important;
 }
 
-.pdf-print-wrapper .badge-readonly {
+body.pdf-printing .badge-readonly {
   background: rgba(37, 99, 235, 0.08) !important;
   border-color: rgba(37, 99, 235, 0.2) !important;
   color: #2563eb !important;
 }
 
-.pdf-print-wrapper a {
+body.pdf-printing a {
   color: #2563eb !important;
   text-decoration: underline !important;
 }
 
-.pdf-print-wrapper code {
+body.pdf-printing code {
   background: #f1f5f9 !important;
   color: #0f172a !important;
   padding: 2px 4px !important;
   border-radius: 4px !important;
 }
-
