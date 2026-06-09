@@ -1,9 +1,52 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// --- Security helpers ---
+
+// Hash a plaintext password using scrypt with a per-user random salt.
+// Format: scrypt$<saltHex>$<hashHex>
+function hashPassword(plain) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = crypto.scryptSync(String(plain), salt, 64).toString('hex');
+  return `scrypt$${salt}$${derived}`;
+}
+
+function isHashed(stored) {
+  return typeof stored === 'string' && stored.startsWith('scrypt$');
+}
+
+// Constant-time password verification. Transparently supports legacy
+// plaintext records (pre-migration) so existing accounts keep working.
+function verifyPassword(plain, stored) {
+  if (typeof stored !== 'string') return false;
+  if (!isHashed(stored)) {
+    return stored === plain;
+  }
+  const [, salt, hash] = stored.split('$');
+  if (!salt || !hash) return false;
+  const derived = crypto.scryptSync(String(plain), salt, 64).toString('hex');
+  const hashBuf = Buffer.from(hash, 'hex');
+  const derivedBuf = Buffer.from(derived, 'hex');
+  if (hashBuf.length !== derivedBuf.length) return false;
+  return crypto.timingSafeEqual(hashBuf, derivedBuf);
+}
+
+// Restrict identifiers used to build filesystem paths to a safe charset.
+// Prevents path traversal (e.g. "../../server") via client-supplied ids.
+const VALID_ID = /^[A-Za-z0-9_-]+$/;
+function isValidId(id) {
+  return typeof id === 'string' && id.length > 0 && id.length <= 128 && VALID_ID.test(id);
+}
+
+// Strip the password field before sending a user object to the client.
+function publicUser(u) {
+  return { email: u.email, name: u.name, role: u.role };
+}
 
 // Directories for persistence
 const DATA_DIR = path.join(__dirname, 'data');
@@ -28,20 +71,26 @@ const SESSIONS = new Map(); // token -> user details
 let USERS = {};
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
-const DEFAULT_USERS = {
-  'admin@simhub.local': {
-    email: 'admin@simhub.local',
-    password: 'admin123',
-    role: 'Admin',
-    name: 'Administrator'
-  },
-  'faculty@simhub.local': {
-    email: 'faculty@simhub.local',
-    password: 'faculty123',
-    role: 'Read-Only',
-    name: 'Clinical Faculty'
-  }
-};
+// Default credentials are defined in plaintext for readability but are
+// hashed before they ever touch disk or memory.
+function buildDefaultUsers() {
+  const defaults = {
+    'admin@simhub.local': {
+      email: 'admin@simhub.local',
+      password: 'admin123',
+      role: 'Admin',
+      name: 'Administrator'
+    },
+    'faculty@simhub.local': {
+      email: 'faculty@simhub.local',
+      password: 'faculty123',
+      role: 'Read-Only',
+      name: 'Clinical Faculty'
+    }
+  };
+  Object.values(defaults).forEach(u => { u.password = hashPassword(u.password); });
+  return defaults;
+}
 
 function loadUsers() {
   if (fs.existsSync(USERS_FILE)) {
@@ -49,11 +98,25 @@ function loadUsers() {
       USERS = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
     } catch (e) {
       console.error('Error reading users file, resetting to default:', e);
-      USERS = { ...DEFAULT_USERS };
+      USERS = buildDefaultUsers();
+      saveUsers();
+      return;
+    }
+
+    // Migrate any legacy plaintext passwords to hashed form on startup.
+    let migrated = false;
+    Object.values(USERS).forEach(u => {
+      if (!isHashed(u.password)) {
+        u.password = hashPassword(u.password);
+        migrated = true;
+      }
+    });
+    if (migrated) {
+      console.log('Migrated legacy plaintext passwords to hashed storage.');
       saveUsers();
     }
   } else {
-    USERS = { ...DEFAULT_USERS };
+    USERS = buildDefaultUsers();
     saveUsers();
   }
 }
@@ -98,7 +161,7 @@ app.post('/api/login', (req, res) => {
   }
 
   const user = USERS[email.toLowerCase()];
-  if (!user || user.password !== password) {
+  if (!user || !verifyPassword(password, user.password)) {
     return res.status(401).json({ error: 'Invalid email or password.' });
   }
 
@@ -166,8 +229,11 @@ app.get('/api/scenarios', authenticate, (req, res) => {
 // Get detailed scenario
 app.get('/api/scenarios/:id', authenticate, (req, res) => {
   const scenarioId = req.params.id;
+  if (!isValidId(scenarioId)) {
+    return res.status(400).json({ error: 'Invalid scenario id.' });
+  }
   const filePath = path.join(SCENARIOS_DIR, `${scenarioId}.json`);
-  
+
   if (!fs.existsSync(filePath)) {
     return res.status(404).json({ error: 'Scenario not found' });
   }
@@ -187,16 +253,18 @@ app.post('/api/scenarios', authenticate, requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Scenario title and code are required.' });
   }
 
-  // Generate ID if not provided
+  // Generate ID if not provided; validate any client-supplied id.
   if (!scenario.id) {
     scenario.id = `scenario_${Date.now()}`;
+  } else if (!isValidId(scenario.id)) {
+    return res.status(400).json({ error: 'Invalid scenario id.' });
   }
 
   const filePath = path.join(SCENARIOS_DIR, `${scenario.id}.json`);
 
   try {
     fs.writeFileSync(filePath, JSON.stringify(scenario, null, 2), 'utf8');
-    res.status(210).json(scenario);
+    res.status(201).json(scenario);
   } catch (err) {
     res.status(500).json({ error: 'Failed to write scenario file: ' + err.message });
   }
@@ -205,6 +273,9 @@ app.post('/api/scenarios', authenticate, requireAdmin, (req, res) => {
 // Update scenario
 app.put('/api/scenarios/:id', authenticate, requireAdmin, (req, res) => {
   const scenarioId = req.params.id;
+  if (!isValidId(scenarioId)) {
+    return res.status(400).json({ error: 'Invalid scenario id.' });
+  }
   const scenario = req.body;
   const filePath = path.join(SCENARIOS_DIR, `${scenarioId}.json`);
 
@@ -225,6 +296,9 @@ app.put('/api/scenarios/:id', authenticate, requireAdmin, (req, res) => {
 // Delete scenario (moves to recycle bin)
 app.delete('/api/scenarios/:id', authenticate, requireAdmin, (req, res) => {
   const scenarioId = req.params.id;
+  if (!isValidId(scenarioId)) {
+    return res.status(400).json({ error: 'Invalid scenario id.' });
+  }
   const filePath = path.join(SCENARIOS_DIR, `${scenarioId}.json`);
   const binPath = path.join(RECYCLE_BIN_DIR, `${scenarioId}.json`);
 
@@ -284,6 +358,8 @@ app.post('/api/programmes', authenticate, requireAdmin, (req, res) => {
 
   if (!prog.id) {
     prog.id = `prog_${Date.now()}`;
+  } else if (!isValidId(prog.id)) {
+    return res.status(400).json({ error: 'Invalid programme id.' });
   }
   if (!prog.scenarioIds) {
     prog.scenarioIds = [];
@@ -302,6 +378,9 @@ app.post('/api/programmes', authenticate, requireAdmin, (req, res) => {
 // Update programme
 app.put('/api/programmes/:id', authenticate, requireAdmin, (req, res) => {
   const progId = req.params.id;
+  if (!isValidId(progId)) {
+    return res.status(400).json({ error: 'Invalid programme id.' });
+  }
   const prog = req.body;
   const filePath = path.join(PROGRAMMES_DIR, `${progId}.json`);
 
@@ -322,6 +401,9 @@ app.put('/api/programmes/:id', authenticate, requireAdmin, (req, res) => {
 // Delete programme
 app.delete('/api/programmes/:id', authenticate, requireAdmin, (req, res) => {
   const progId = req.params.id;
+  if (!isValidId(progId)) {
+    return res.status(400).json({ error: 'Invalid programme id.' });
+  }
   const filePath = path.join(PROGRAMMES_DIR, `${progId}.json`);
 
   if (!fs.existsSync(filePath)) {
@@ -342,12 +424,7 @@ app.delete('/api/programmes/:id', authenticate, requireAdmin, (req, res) => {
 // List all users
 app.get('/api/users', authenticate, requireAdmin, (req, res) => {
   try {
-    const usersList = Object.values(USERS).map(u => ({
-      email: u.email,
-      name: u.name,
-      role: u.role,
-      password: u.password
-    }));
+    const usersList = Object.values(USERS).map(publicUser);
     res.json(usersList);
   } catch (err) {
     res.status(500).json({ error: 'Failed to retrieve users: ' + err.message });
@@ -368,14 +445,14 @@ app.post('/api/users', authenticate, requireAdmin, (req, res) => {
 
   USERS[normalizedEmail] = {
     email: normalizedEmail,
-    password,
+    password: hashPassword(password),
     role,
     name
   };
 
   try {
     saveUsers();
-    res.status(201).json(USERS[normalizedEmail]);
+    res.status(201).json(publicUser(USERS[normalizedEmail]));
   } catch (err) {
     res.status(500).json({ error: 'Failed to save new user: ' + err.message });
   }
@@ -390,8 +467,9 @@ app.put('/api/users/:email', authenticate, requireAdmin, (req, res) => {
     return res.status(404).json({ error: 'User not found.' });
   }
 
-  if (!password || !role || !name) {
-    return res.status(400).json({ error: 'All fields (password, role, name) are required.' });
+  // Password is optional on update: a blank value keeps the existing one.
+  if (!role || !name) {
+    return res.status(400).json({ error: 'Role and name are required.' });
   }
 
   if (targetEmail === req.user.email.toLowerCase() && role !== 'Admin') {
@@ -400,11 +478,13 @@ app.put('/api/users/:email', authenticate, requireAdmin, (req, res) => {
 
   USERS[targetEmail].name = name;
   USERS[targetEmail].role = role;
-  USERS[targetEmail].password = password;
+  if (password) {
+    USERS[targetEmail].password = hashPassword(password);
+  }
 
   try {
     saveUsers();
-    res.json(USERS[targetEmail]);
+    res.json(publicUser(USERS[targetEmail]));
   } catch (err) {
     res.status(500).json({ error: 'Failed to update user: ' + err.message });
   }
@@ -462,6 +542,9 @@ app.get('/api/recycle-bin', authenticate, requireAdmin, (req, res) => {
 // Restore scenario from recycle bin
 app.post('/api/recycle-bin/:id/restore', authenticate, requireAdmin, (req, res) => {
   const scenarioId = req.params.id;
+  if (!isValidId(scenarioId)) {
+    return res.status(400).json({ error: 'Invalid scenario id.' });
+  }
   const binPath = path.join(RECYCLE_BIN_DIR, `${scenarioId}.json`);
   const filePath = path.join(SCENARIOS_DIR, `${scenarioId}.json`);
 
@@ -485,6 +568,9 @@ app.post('/api/recycle-bin/:id/restore', authenticate, requireAdmin, (req, res) 
 // Permanently delete scenario from disk
 app.delete('/api/recycle-bin/:id', authenticate, requireAdmin, (req, res) => {
   const scenarioId = req.params.id;
+  if (!isValidId(scenarioId)) {
+    return res.status(400).json({ error: 'Invalid scenario id.' });
+  }
   const binPath = path.join(RECYCLE_BIN_DIR, `${scenarioId}.json`);
 
   if (!fs.existsSync(binPath)) {
@@ -539,15 +625,21 @@ app.post('/api/backup/import', authenticate, requireAdmin, (req, res) => {
 
   try {
     let importCount = 0;
+    let skipped = 0;
     scenarios.forEach(scenario => {
       if (scenario.id && scenario.title && scenario.code) {
+        // Reject any entry whose id could escape the scenarios directory.
+        if (!isValidId(scenario.id)) {
+          skipped++;
+          return;
+        }
         const filePath = path.join(SCENARIOS_DIR, `${scenario.id}.json`);
         fs.writeFileSync(filePath, JSON.stringify(scenario, null, 2), 'utf8');
         importCount++;
       }
     });
 
-    res.json({ success: true, count: importCount });
+    res.json({ success: true, count: importCount, skipped });
   } catch (err) {
     res.status(500).json({ error: 'Failed to import backup: ' + err.message });
   }

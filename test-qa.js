@@ -142,8 +142,7 @@ async function runTests() {
     };
 
     const createRes = await request('/api/scenarios', 'POST', newScenario, adminToken);
-    // Wait, let's verify status. Express response might be 200 or 210 (we used res.status(210) by accident in server.js? Oh, wait, in server.js I wrote res.status(210).json(scenario); Let's check!)
-    assert(createRes.status === 210 || createRes.status === 200, 'Creating scenario returns successful status (200 or 210)');
+    assert(createRes.status === 201 || createRes.status === 200, 'Creating scenario returns successful status (201 Created)');
     assert(createRes.body.code === 'QA-TEST-01', 'Created scenario code matches payload');
 
     // -------------------------------------------------------------
