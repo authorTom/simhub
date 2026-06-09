@@ -1923,6 +1923,18 @@ const components = {
     // Populate arrays
     if (existingData) {
       document.getElementById('form-scenario-id').value = s.id;
+
+      // Derive the repeater source lists from the scenario being edited.
+      const techOutcomes = s.learningOutcomes?.technical || [];
+      const nonTechOutcomes = s.learningOutcomes?.nonTechnical || [];
+      const handovers = s.handover || [];
+      const facilitators = s.faculty?.facilitators || [];
+      const SPs = s.faculty?.inScenarioRoles || [];
+      const equipment = s.environment?.equipment || [];
+      const medications = s.environment?.medications || [];
+      const progression = s.progression || [];
+      const versionHistory = s.versionHistory || [];
+
       techOutcomes.forEach(o => this.addTechOutcomeRow(o.outcome, o.mapping));
       nonTechOutcomes.forEach(o => this.addNonTechOutcomeRow(o.outcome, o.mapping));
       handovers.forEach(h => this.addSbarRow(h.role, h.situation, h.background, h.assessment, h.recommendation));
