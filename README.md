@@ -167,6 +167,16 @@ We welcome contributions to make clinical simulation more structured and accessi
 
 ## 📝 Change Log
 
+### [2026-06-10] - Premium UI Overhaul
+*   **Confirmation Dialogs**: Replaced every native browser `confirm()` with a styled in-app dialog (`app.confirm()`) featuring a blurred backdrop, scale-in animation, danger styling for destructive actions, Escape/backdrop-click dismissal, and safe text injection.
+*   **Toast System**: Toasts now stack, slide in/out with animation, and carry an auto-dismiss progress bar; rapid successive messages no longer clobber each other.
+*   **Dashboard**: New stats strip (scenario/programme counts, total run time, review-due-within-90-days warning), search box with icon + `/` keyboard shortcut + live result count, shimmer skeleton loaders while the catalog fetches, and friendlier empty states with a create CTA.
+*   **Scenario Wizard**: The seven flat tabs are now a numbered stepper with completed-step checkmarks and connecting lines, plus a sticky footer so Back/Next/Save never scroll out of reach.
+*   **Scenario Detail Sheet**: Content is centered with a sticky "On this page" table of contents featuring scroll-spy highlighting and smooth anchor scrolling.
+*   **Run HUD**: Full-width scrolling ECG strip with a synthetic PQRST waveform paced live by the active phase's heart rate, a pulsing LIVE indicator in the monitor header, and a flash animation on vitals when phases transition.
+*   **Design Discipline**: Single blue brand accent for section headings (semantic colors reserved for meaning), quieter borderless badge pills, spacing-scale tokens, tabular numerals on timers/vitals, visible `:focus-visible` keyboard rings, thin rounded scrollbars, deeper light-theme shadows, and `prefers-reduced-motion` support.
+*   **Login**: Slow drifting aurora background, demo credentials tucked behind a disclosure, password/email/date inputs now styled consistently (fixes the unstyled native password field).
+
 ### [2026-06-10] - Security & Reliability Hardening
 *   **Session Security**: Tokens are now 256-bit crypto-random values (previously timestamp + `Math.random`), sessions carry an 8-hour sliding expiry, deleting a user revokes their live sessions, and role/name changes propagate into active sessions immediately.
 *   **Login Protection**: Added per-IP/email brute-force throttling (10 failures per 15 minutes → `429`), switched password verification to non-blocking async scrypt, and equalised response timing for unknown accounts to prevent email enumeration.

@@ -332,6 +332,7 @@ app.get('/api/scenarios', authenticate, (req, res) => {
           title: data.title,
           version: data.version,
           lastReviewed: data.lastReviewed,
+          nextReviewDue: data.nextReviewDue || '',
           targetLearners: data.overview?.targetLearners || '',
           modality: data.overview?.modality || '',
           duration: data.overview?.duration || 0,

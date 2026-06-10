@@ -57,14 +57,84 @@ const components = {
 
   // Initialize and load data
   async init() {
+    this.renderSkeletons();
     try {
       this.allScenarios = await api.getScenarios();
       this.allProgrammes = await api.getProgrammes();
       this.renderSidebarProgrammes();
       this.renderScenariosList();
+      this.renderDashboardStats();
     } catch (err) {
       app.showToast(err.message, 'error');
     }
+  },
+
+  // Shimmer placeholders shown while the catalog is being fetched
+  renderSkeletons() {
+    const container = document.getElementById('scenarios-list');
+    if (!container) return;
+    container.innerHTML = Array.from({ length: 3 }).map(() => `
+      <div class="skeleton-card">
+        <div style="display:flex; justify-content:space-between;">
+          <div class="skeleton-line" style="width: 90px;"></div>
+          <div class="skeleton-line" style="width: 120px;"></div>
+        </div>
+        <div class="skeleton-line" style="width: 70%; height: 20px;"></div>
+        <div class="skeleton-line" style="width: 100%;"></div>
+        <div class="skeleton-line" style="width: 85%;"></div>
+        <div style="flex:1;"></div>
+        <div class="skeleton-line" style="width: 100%; height: 36px;"></div>
+      </div>
+    `).join('');
+  },
+
+  // Dashboard stat tiles: scenario/programme counts + review-due warning
+  renderDashboardStats() {
+    const strip = document.getElementById('dashboard-stats');
+    if (!strip) return;
+
+    // Parse DD/MM/YYYY review-due dates; count overdue or due within 90 days.
+    const now = new Date();
+    const soon = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+    const dueCount = this.allScenarios.filter(s => {
+      const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s.nextReviewDue || '');
+      if (!m) return false;
+      const due = new Date(`${m[3]}-${m[2]}-${m[1]}`);
+      return !isNaN(due) && due <= soon;
+    }).length;
+
+    const totalMinutes = this.allScenarios.reduce((sum, s) => sum + (parseInt(s.duration) || 0), 0);
+
+    strip.innerHTML = `
+      <div class="stat-tile">
+        <div class="stat-icon"><i class="fa-solid fa-file-medical"></i></div>
+        <div>
+          <div class="stat-value">${this.allScenarios.length}</div>
+          <div class="stat-label">Scenarios</div>
+        </div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-icon"><i class="fa-solid fa-graduation-cap"></i></div>
+        <div>
+          <div class="stat-value">${this.allProgrammes.length}</div>
+          <div class="stat-label">Programmes</div>
+        </div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-icon"><i class="fa-solid fa-stopwatch"></i></div>
+        <div>
+          <div class="stat-value">${totalMinutes}<span style="font-size:0.8rem; font-weight:600; color:var(--text-muted);"> min</span></div>
+          <div class="stat-label">Total Run Time</div>
+        </div>
+      </div>
+      <div class="stat-tile ${dueCount > 0 ? 'stat-warn' : ''}">
+        <div class="stat-icon"><i class="fa-solid fa-calendar-check"></i></div>
+        <div>
+          <div class="stat-value">${dueCount}</div>
+          <div class="stat-label">Review Due ≤ 90d</div>
+        </div>
+      </div>
+    `;
   },
 
   // --- 1. RENDER DASHBOARD / LIBRARY ---
@@ -139,11 +209,24 @@ const components = {
       );
     }
 
+    // Live result count under the search box
+    const countEl = document.getElementById('scenario-results-count');
+    if (countEl) {
+      countEl.textContent = searchQuery
+        ? `${filtered.length} of ${this.allScenarios.length} scenario${this.allScenarios.length === 1 ? '' : 's'}`
+        : `${filtered.length} scenario${filtered.length === 1 ? '' : 's'}`;
+    }
+
     if (filtered.length === 0) {
+      const emptyCta = api.isAdmin() && !searchQuery
+        ? `<button class="btn btn-primary" onclick="app.navigate('scenario-form-new')"><i class="fa-solid fa-plus"></i> Create your first scenario</button>`
+        : '';
       container.innerHTML = `
-        <div class="glass-panel" style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--text-secondary);">
-          <i class="fa-solid fa-heart-crack" style="font-size: 2.5rem; margin-bottom: 12px; color: var(--text-muted);"></i>
-          <p>No scenarios found matching current filters.</p>
+        <div class="glass-panel empty-state">
+          <div class="empty-icon"><i class="fa-solid ${searchQuery ? 'fa-magnifying-glass' : 'fa-file-medical'}"></i></div>
+          <h3 style="font-size:1.1rem;">${searchQuery ? 'No matching scenarios' : 'No scenarios yet'}</h3>
+          <p style="font-size:0.9rem; color:var(--text-muted);">${searchQuery ? 'Try a different title, code, or keyword.' : 'Scenarios you create will appear here.'}</p>
+          ${emptyCta}
         </div>
       `;
       return;
@@ -154,7 +237,7 @@ const components = {
         <div>
           <div class="scenario-card-header">
             <span class="scenario-code">${esc(s.code)}</span>
-            <span class="badge ${s.modality.includes('manikin') || s.modality.includes('High') ? 'badge-admin' : 'badge-readonly'}" style="font-size: 0.65rem;">
+            <span class="badge badge-neutral" style="font-size: 0.65rem;">
               ${esc(s.modality)}
             </span>
           </div>
@@ -233,7 +316,7 @@ const components = {
           <div>
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
               <h3 style="color:var(--text-primary); font-size:1.2rem;">${esc(p.name)}</h3>
-              <span class="badge badge-admin" style="font-size: 0.7rem;">${pScenarios.length} Scenarios</span>
+              <span class="badge badge-neutral" style="font-size: 0.7rem;">${pScenarios.length} Scenarios</span>
             </div>
             <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:16px; min-height: 40px;">${esc(p.description) || 'No description provided.'}</p>
             
@@ -262,7 +345,13 @@ const components = {
   },
 
   async deleteProgramme(id) {
-    if (!confirm('Are you sure you want to delete this programme? Scenarios will not be deleted.')) return;
+    const ok = await app.confirm({
+      title: 'Delete this programme?',
+      message: 'The programme grouping will be removed. Scenarios assigned to it will not be deleted.',
+      confirmText: 'Delete Programme',
+      danger: true
+    });
+    if (!ok) return;
     try {
       await api.deleteProgramme(id);
       app.showToast('Programme deleted successfully.', 'success');
@@ -490,7 +579,7 @@ const components = {
           
           <div class="outcomes-grid">
             <div class="glass-card">
-              <h4 style="margin-bottom:12px; color:var(--accent-emerald);"><i class="fa-solid fa-circle-nodes"></i> Technical / Clinical Outcomes</h4>
+              <h4 style="margin-bottom:12px; color:var(--text-secondary);"><i class="fa-solid fa-circle-nodes"></i> Technical / Clinical Outcomes</h4>
               <ul class="outcome-list">
                 ${techOutcomes.map((o, index) => `
                   <li class="outcome-item">
@@ -502,7 +591,7 @@ const components = {
             </div>
             
             <div class="glass-card">
-              <h4 style="margin-bottom:12px; color:var(--accent-blue);"><i class="fa-solid fa-people-arrows"></i> Non-Technical / Behavioural Outcomes</h4>
+              <h4 style="margin-bottom:12px; color:var(--text-secondary);"><i class="fa-solid fa-people-arrows"></i> Non-Technical / Behavioural Outcomes</h4>
               <ul class="outcome-list">
                 ${nonTechOutcomes.map((o, index) => `
                   <li class="outcome-item">
@@ -963,9 +1052,41 @@ const components = {
         </div>
       `;
 
-      container.innerHTML = html;
+      // Wrap the document in a centered layout with a sticky table of
+      // contents built from the section headers.
+      container.innerHTML = `
+        <div class="detail-layout">
+          <nav class="detail-toc" id="detail-toc"></nav>
+          <div class="detail-main">${html}</div>
+        </div>
+      `;
+
+      const headers = container.querySelectorAll('.detail-section-header');
+      const toc = document.getElementById('detail-toc');
+      toc.innerHTML = '<span class="overline">On this page</span>' + Array.from(headers).map((h, i) => {
+        h.id = `detail-sec-${i}`;
+        const label = h.querySelector('h2')?.textContent || `Section ${i + 1}`;
+        return `<a href="#detail-sec-${i}" data-target="detail-sec-${i}">${esc(label)}</a>`;
+      }).join('');
+
+      toc.querySelectorAll('a').forEach(a => a.addEventListener('click', (e) => {
+        e.preventDefault();
+        document.getElementById(a.dataset.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }));
+
+      // Scroll-spy: highlight the TOC entry of the section in view
+      if (this._detailObserver) this._detailObserver.disconnect();
+      this._detailObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          toc.querySelectorAll('a').forEach(a =>
+            a.classList.toggle('active', a.dataset.target === entry.target.id));
+        });
+      }, { rootMargin: '-90px 0px -65% 0px' });
+      headers.forEach(h => this._detailObserver.observe(h));
+
       app.navigate('scenario-detail');
-      
+
       // Auto-toggle admin only controls on details sheet
       app.applyRoleRestrictions();
     } catch (err) {
@@ -974,7 +1095,13 @@ const components = {
   },
 
   async deleteScenario(id) {
-    if (!confirm('Are you sure you want to delete this scenario permanently? This cannot be undone.')) return;
+    const ok = await app.confirm({
+      title: 'Delete this scenario?',
+      message: 'It will be moved to the recycle bin, where an Admin can restore it or erase it permanently.',
+      confirmText: 'Delete Scenario',
+      danger: true
+    });
+    if (!ok) return;
     try {
       await api.deleteScenario(id);
       app.showToast('Scenario deleted successfully.', 'success');
@@ -988,23 +1115,28 @@ const components = {
 
   // --- 4. SCENARIO EDITOR FORM (DYNAMIC BUILDER & WIZARD) ---
 
-  cancelForm() {
-    if (confirm('Discard all unsaved edits?')) {
-      app.navigate('dashboard');
-    }
+  async cancelForm() {
+    const ok = await app.confirm({
+      title: 'Discard unsaved edits?',
+      message: 'Any changes made in the scenario editor will be lost.',
+      confirmText: 'Discard',
+      danger: true
+    });
+    if (ok) app.navigate('dashboard');
   },
 
   switchEditorTab(tabId) {
     this.currentFormTab = tabId;
-    
-    // Toggle active tabs buttons style
+
+    // Stepper states: current step is active, earlier steps show completed
+    const stepList = ['tab-general', 'tab-outcomes', 'tab-patient', 'tab-setup', 'tab-progression', 'tab-debrief', 'tab-aspih'];
+    const currentIdx = stepList.indexOf(tabId);
     const tabs = document.querySelectorAll('#editor-tabs-container .editor-tab');
-    tabs.forEach(tab => {
-      if (tab.getAttribute('onclick').includes(tabId)) {
-        tab.classList.add('active');
-      } else {
-        tab.classList.remove('active');
-      }
+    tabs.forEach((tab, i) => {
+      tab.classList.toggle('active', i === currentIdx);
+      tab.classList.toggle('completed', i < currentIdx);
+      const num = tab.querySelector('.step-num');
+      if (num) num.innerHTML = i < currentIdx ? '<i class="fa-solid fa-check"></i>' : String(i + 1);
     });
 
     // Toggle forms display
@@ -1605,7 +1737,7 @@ const components = {
       <!-- TAB 2: LEARNING OUTCOMES -->
       <div id="tab-outcomes" class="form-tab-group" style="display:none;">
         <div class="flex-between m-b-20" style="margin-bottom:12px;">
-          <h3 style="color:var(--accent-emerald);"><i class="fa-solid fa-circle-nodes"></i> Technical / Clinical Learning Outcomes</h3>
+          <h3 style="color:var(--accent-blue);"><i class="fa-solid fa-circle-nodes"></i> Technical / Clinical Learning Outcomes</h3>
           <button type="button" class="btn btn-secondary" onclick="components.addTechOutcomeRow()" style="padding:6px 12px; font-size:0.8rem;">
             <i class="fa-solid fa-plus"></i> Add Tech Outcome
           </button>
@@ -1708,7 +1840,7 @@ const components = {
         </div>
 
         <div class="flex-between m-b-20" style="margin-top:30px; margin-bottom:12px;">
-          <h3 style="color:var(--accent-amber);"><i class="fa-solid fa-theater-masks"></i> In-Scenario Confederate / SP Roles</h3>
+          <h3 style="color:var(--accent-blue);"><i class="fa-solid fa-theater-masks"></i> In-Scenario Confederate / SP Roles</h3>
           <button type="button" class="btn btn-secondary" onclick="components.addActorRow()" style="padding:6px 12px; font-size:0.8rem;">
             <i class="fa-solid fa-plus"></i> Add SP Role
           </button>
@@ -1820,7 +1952,7 @@ const components = {
           <textarea id="form-prebrief-checklist" rows="5" placeholder="Introductions and housekeeping&#10;Fiction contract&#10;Basic assumption&#10;Confidentiality&#10;Orientation to simulator">${esc((s.prebrief?.checklist || []).join('\n'))}</textarea>
         </div>
 
-        <h3 style="margin-top:30px; margin-bottom:16px; color:var(--accent-purple);"><i class="fa-solid fa-comments"></i> PEARLS Debrief Guidance</h3>
+        <h3 style="margin-top:30px; margin-bottom:16px; color:var(--accent-blue);"><i class="fa-solid fa-comments"></i> PEARLS Debrief Guidance</h3>
         <div class="form-row-2">
           <div class="form-group">
             <label for="form-debrief-reactions">Phase 1 - Reactions Question</label>
@@ -1844,7 +1976,7 @@ const components = {
         </div>
 
         <div class="flex-between m-b-20" style="margin-top:20px; margin-bottom:12px;">
-          <h5 style="color:var(--accent-purple);"><i class="fa-solid fa-chart-line"></i> Phase 3 - Analysis Core Questions</h5>
+          <h5 style="color:var(--accent-blue);"><i class="fa-solid fa-chart-line"></i> Phase 3 - Analysis Core Questions</h5>
           <button type="button" class="btn btn-secondary" onclick="components.addDebriefAnalysisRow()" style="padding:6px 12px; font-size:0.8rem;">
             <i class="fa-solid fa-plus"></i> Add Analysis Objective
           </button>
@@ -2240,9 +2372,11 @@ const components = {
       const hud = document.getElementById('run-hud-content');
       if (!hud) return;
 
-      this.renderRunHUDStructure();
+      // Navigate first so the HUD section is visible (and measurable for
+      // the ECG canvas) before the structure renders.
       app.navigate('run-hud');
-      
+      this.renderRunHUDStructure();
+
       this.triggerPhase(0); // baseline
       this.startTimer();
     } catch (err) {
@@ -2326,17 +2460,16 @@ const components = {
           <!-- Bedside Monitor -->
           <div class="monitor-panel">
             <div class="monitor-header">
-              <span>BEDSIDE PATIENT MONITOR</span>
+              <span style="display:inline-flex; align-items:center; gap:12px;"><span class="live-dot">LIVE</span> BEDSIDE PATIENT MONITOR</span>
               <span>PATIENT: ${s.patientInfo?.demographics?.name || 'SAM PHILLIPS'}</span>
             </div>
-            
+
             <div class="monitor-grid">
               <!-- HR -->
               <div class="vital-box vital-hr">
                 <span class="vital-label">ECG</span>
                 <span class="vital-value" id="monitor-hr">--</span>
                 <span class="vital-unit">bpm</span>
-                <canvas id="heart-pulse-wave" width="80" height="30" style="position:absolute; right:10px; opacity:0.3; pointer-events:none;"></canvas>
               </div>
               
               <!-- SpO2 -->
@@ -2374,6 +2507,9 @@ const components = {
                 <span class="vital-unit">AVPU</span>
               </div>
             </div>
+
+            <!-- Scrolling ECG trace paced by the active phase's heart rate -->
+            <canvas class="ecg-strip" id="ecg-strip" height="64"></canvas>
           </div>
 
           <!-- Active Presentation dialogue HUD -->
@@ -2468,8 +2604,8 @@ const components = {
       </div>
     `;
 
-    // Start a subtle monitor pulse wave drawing
-    this.drawMonitorPulse();
+    // Start the scrolling ECG trace
+    this.drawEcgStrip();
   },
 
   toggleHudRightList(id, btn) {
@@ -2477,31 +2613,64 @@ const components = {
     document.getElementById(id).style.display = 'block';
   },
 
-  drawMonitorPulse() {
-    const canvas = document.getElementById('heart-pulse-wave');
+  // Synthetic PQRST complex sampled at beat position t (0..1).
+  // Sum of Gaussian bumps: P wave, Q dip, R spike, S dip, T wave.
+  ecgWave(t) {
+    const bump = (c, w, a) => a * Math.exp(-((t - c) ** 2) / (2 * w * w));
+    return bump(0.14, 0.025, 0.12)   // P
+         + bump(0.235, 0.008, -0.12) // Q
+         + bump(0.25, 0.012, 1.0)    // R
+         + bump(0.27, 0.010, -0.25)  // S
+         + bump(0.45, 0.04, 0.30);   // T
+  },
+
+  // Scrolling full-width ECG trace, paced live by the monitor's HR value.
+  drawEcgStrip() {
+    const canvas = document.getElementById('ecg-strip');
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
+    canvas.width = canvas.clientWidth || 600;
+
     let x = 0;
-    
+    let lastY = null;
+
     const animate = () => {
-      if (!document.getElementById('heart-pulse-wave')) return; // exited HUD
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      
-      ctx.strokeStyle = '#10b981';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      
+      const el = document.getElementById('ecg-strip');
+      if (!el || el !== canvas) return; // exited HUD or re-rendered
+
+      const w = canvas.width;
+      const h = canvas.height;
+      const baseline = h * 0.62;
       const hr = parseInt(document.getElementById('monitor-hr')?.innerText) || 75;
-      const freq = (hr / 60) * 0.05;
-      
-      const y = (canvas.height / 2) + Math.sin(x * freq) * (Math.random() > 0.85 ? 12 : 1) * Math.sin(x * 0.2);
-      ctx.lineTo(x % canvas.width, y);
-      ctx.stroke();
-      
+      // Beat length in px at ~60fps and 2px/frame: (3600 / hr) frames * 2px
+      const beatPx = Math.max(48, 7200 / hr);
+
+      // Erase a column just ahead of the pen (classic monitor sweep)
+      ctx.fillStyle = '#000';
+      ctx.fillRect(x + 2, 0, 16, h);
+      if (x + 18 > w) ctx.fillRect(0, 0, (x + 18) % w, h);
+
+      const t = (x % beatPx) / beatPx;
+      const y = baseline - this.ecgWave(t) * h * 0.55 + (Math.random() - 0.5) * 0.8;
+
+      if (lastY !== null) {
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(x, lastY);
+        ctx.lineTo(x + 2, y);
+        ctx.stroke();
+      }
+
+      lastY = y;
       x += 2;
+      if (x >= w) { x = 0; lastY = null; }
+
       requestAnimationFrame(animate);
     };
+
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     animate();
   },
 
@@ -2537,6 +2706,13 @@ const components = {
     document.getElementById('monitor-bp').innerText = p.vitals?.bp || '--/--';
     document.getElementById('monitor-temp').innerText = p.vitals?.temp || '--.-';
     document.getElementById('monitor-gcs').innerText = p.vitals?.gcs || '--';
+
+    // Flash the vitals so phase transitions read instantly on the monitor
+    document.querySelectorAll('.vital-box').forEach(box => {
+      box.classList.remove('vital-flash');
+      void box.offsetWidth; // restart the animation
+      box.classList.add('vital-flash');
+    });
 
     // Update Patient Status Details
     document.getElementById('hud-patient-appearance').innerText = p.patientPresentation?.appearance || 'Normal appearance.';
@@ -2659,8 +2835,14 @@ const components = {
     if (el) el.innerText = display;
   },
 
-  stopRun() {
-    if (confirm('Exit simulation run and return to Library? Current run timers and checklists will be cleared.')) {
+  async stopRun() {
+    const ok = await app.confirm({
+      title: 'Exit simulation run?',
+      message: 'You will return to the library. The current run timer and action checklist will be cleared.',
+      confirmText: 'Exit Run',
+      danger: true
+    });
+    if (ok) {
       this.pauseTimer();
       app.navigate('dashboard');
     }
@@ -2891,8 +3073,13 @@ const components = {
     if (el) el.innerText = display;
   },
 
-  stopDebrief() {
-    if (confirm('Debrief completed successfully. Return to Dashboard?')) {
+  async stopDebrief() {
+    const ok = await app.confirm({
+      title: 'Complete this debrief?',
+      message: 'The debrief timer will stop and you will return to the dashboard.',
+      confirmText: 'Complete Debrief'
+    });
+    if (ok) {
       clearInterval(this.debriefState.timerInterval);
       app.showToast('Clinical debrief log compiled and saved.', 'success');
       app.navigate('dashboard');
@@ -3071,7 +3258,13 @@ const components = {
       return;
     }
 
-    if (!confirm(`Are you sure you want to permanently delete faculty account: ${email}?`)) return;
+    const ok = await app.confirm({
+      title: 'Delete faculty account?',
+      message: `${email} will permanently lose access to SimHub. This cannot be undone.`,
+      confirmText: 'Delete Account',
+      danger: true
+    });
+    if (!ok) return;
 
     try {
       await api.deleteUser(email);
@@ -3142,7 +3335,12 @@ const components = {
   },
 
   async restoreScenario(id) {
-    if (!confirm('Are you sure you want to restore this clinical simulation scenario back to the active library?')) return;
+    const ok = await app.confirm({
+      title: 'Restore this scenario?',
+      message: 'It will move back from the recycle bin into the active scenario library.',
+      confirmText: 'Restore'
+    });
+    if (!ok) return;
 
     try {
       await api.restoreScenario(id);
@@ -3151,7 +3349,8 @@ const components = {
       this.allScenarios = await api.getScenarios();
       this.renderSidebarProgrammes();
       this.renderScenariosList();
-      
+      this.renderDashboardStats();
+
       this.renderRecycleBinView();
     } catch (err) {
       app.showToast(err.message, 'error');
@@ -3159,8 +3358,13 @@ const components = {
   },
 
   async permanentlyDeleteScenario(id) {
-    if (!confirm('🚨 WARNING: Are you sure you want to PERMANENTLY erase this scenario from disk? This cannot be recovered!')) return;
-    if (!confirm('Confirm secondary double-check: Erase file permanently?')) return;
+    const ok = await app.confirm({
+      title: 'Permanently erase this scenario?',
+      message: 'The file will be deleted from disk. This cannot be undone or recovered.',
+      confirmText: 'Erase Permanently',
+      danger: true
+    });
+    if (!ok) return;
 
     try {
       await api.permanentlyDeleteScenario(id);
@@ -3241,9 +3445,13 @@ const components = {
           throw new Error('Invalid backup file format. Must be a valid SimHub backup.');
         }
 
-        if (!confirm(`Are you sure you want to import ${backupData.scenarios.length} scenarios? Any matching scenarios will be overwritten.`)) {
-          return;
-        }
+        const ok = await app.confirm({
+          title: `Import ${backupData.scenarios.length} scenario${backupData.scenarios.length === 1 ? '' : 's'}?`,
+          message: 'Scenarios with matching IDs in the library will be overwritten by the backup contents.',
+          confirmText: 'Import Backup',
+          danger: true
+        });
+        if (!ok) return;
 
         app.showToast('Importing scenarios...', 'success');
         const result = await api.importBackup(backupData);
