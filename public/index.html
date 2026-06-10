@@ -34,11 +34,11 @@
         </button>
       </form>
 
-      <div class="login-credentials-helper">
-        <h5><i class="fa-solid fa-circle-info"></i> Demo Access Accounts</h5>
+      <details class="login-credentials-helper">
+        <summary><i class="fa-solid fa-circle-info"></i> View demo access accounts <i class="fa-solid fa-chevron-down" style="font-size: 0.65rem; margin-left: auto;"></i></summary>
         <p><strong>Admin (Read/Write):</strong><br>admin@simhub.local / admin123</p>
         <p style="margin-top: 10px;"><strong>Faculty (Read-Only):</strong><br>faculty@simhub.local / faculty123</p>
-      </div>
+      </details>
     </div>
   </div>
 
@@ -124,13 +124,22 @@
           </div>
 
           <div class="main-catalog-panel">
+            <div class="stats-strip" id="dashboard-stats">
+              <!-- Dynamically populated stat tiles -->
+            </div>
+
             <div class="scenario-catalog-header">
               <div>
                 <h2 id="catalog-title" style="font-size: 1.5rem; font-weight: 600;">Scenario Library</h2>
                 <p id="catalog-description" style="color: var(--text-secondary); font-size: 0.9rem;">Browse all registered clinical simulation scenarios.</p>
               </div>
-              <div class="search-box">
-                <input type="text" id="scenario-search" placeholder="Search title, code, keyword..." oninput="components.filterScenarios()">
+              <div>
+                <div class="search-box">
+                  <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                  <input type="text" id="scenario-search" placeholder="Search title, code, keyword..." oninput="components.filterScenarios()">
+                  <span class="search-kbd">/</span>
+                </div>
+                <div class="results-count" id="scenario-results-count" style="text-align: right;"></div>
               </div>
             </div>
 
@@ -250,13 +259,13 @@
 
         <div class="glass-panel">
           <div class="editor-tabs" id="editor-tabs-container">
-            <button class="editor-tab active" onclick="components.switchEditorTab('tab-general')">1. General & Governance</button>
-            <button class="editor-tab" onclick="components.switchEditorTab('tab-outcomes')">2. Learning Outcomes</button>
-            <button class="editor-tab" onclick="components.switchEditorTab('tab-patient')">3. Patient Info & SBAR</button>
-            <button class="editor-tab" onclick="components.switchEditorTab('tab-setup')">4. Faculty & Setup</button>
-            <button class="editor-tab" onclick="components.switchEditorTab('tab-progression')">5. Scenario Progression</button>
-            <button class="editor-tab" onclick="components.switchEditorTab('tab-debrief')">6. Prebrief & Debrief</button>
-            <button class="editor-tab" onclick="components.switchEditorTab('tab-aspih')">7. ASPiH & References</button>
+            <button class="editor-tab active" onclick="components.switchEditorTab('tab-general')"><span class="step-num">1</span> General & Governance</button>
+            <button class="editor-tab" onclick="components.switchEditorTab('tab-outcomes')"><span class="step-num">2</span> Learning Outcomes</button>
+            <button class="editor-tab" onclick="components.switchEditorTab('tab-patient')"><span class="step-num">3</span> Patient Info & SBAR</button>
+            <button class="editor-tab" onclick="components.switchEditorTab('tab-setup')"><span class="step-num">4</span> Faculty & Setup</button>
+            <button class="editor-tab" onclick="components.switchEditorTab('tab-progression')"><span class="step-num">5</span> Scenario Progression</button>
+            <button class="editor-tab" onclick="components.switchEditorTab('tab-debrief')"><span class="step-num">6</span> Prebrief & Debrief</button>
+            <button class="editor-tab" onclick="components.switchEditorTab('tab-aspih')"><span class="step-num">7</span> ASPiH & References</button>
           </div>
 
           <form id="scenario-form" onsubmit="event.preventDefault();">
@@ -268,7 +277,7 @@
             </div>
           </form>
 
-          <div style="display: flex; justify-content: space-between; border-top: 1px solid var(--glass-border); padding-top: 20px; margin-top: 20px;">
+          <div class="wizard-footer">
             <button class="btn btn-secondary" id="btn-prev-tab" onclick="components.prevEditorTab()">
               <i class="fa-solid fa-angle-left"></i> Previous Tab
             </button>
@@ -307,10 +316,8 @@
     </div>
   </div>
 
-  <!-- 4. TOAST NOTIFICATIONS -->
-  <div id="toast-message" class="toast toast-success">
-    <i class="fa-solid fa-circle-check"></i> <span id="toast-text">Operation successful.</span>
-  </div>
+  <!-- 4. TOAST NOTIFICATIONS (stacked, created dynamically) -->
+  <div id="toast-container"></div>
 
   <!-- CORE SCRIPTS -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"

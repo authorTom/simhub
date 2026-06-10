@@ -13,6 +13,16 @@ const app = {
 
     // 3. Setup Theme Sync
     this.syncThemeOnLoad();
+
+    // 4. "/" focuses the scenario search from anywhere outside a field
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== '/' || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      const search = document.getElementById('scenario-search');
+      if (this.currentView === 'dashboard' && search) {
+        e.preventDefault();
+        search.focus();
+      }
+    });
   },
 
   async checkSession() {
@@ -209,27 +219,82 @@ const app = {
   },
 
   // --- TOAST NOTIFICATIONS ---
-  
-  showToast(message, type = 'success') {
-    const toast = document.getElementById('toast-message');
-    if (!toast) return;
 
-    // Rebuild the icon + text span each call (the span is recreated so the
-    // element always exists on subsequent toasts), then inject the message
-    // via textContent: it can contain user-controlled data (e.g. the account
-    // name in "Welcome back, ...") and must never be parsed as markup.
-    const icon = type === 'error' ? 'fa-circle-xmark' : 'fa-circle-check';
+  // Stacked, animated toasts with an auto-dismiss progress bar. Each call
+  // creates its own element so rapid successive messages never clobber
+  // each other. Message is injected via textContent: it can contain
+  // user-controlled data (e.g. the account name in "Welcome back, ...")
+  // and must never be parsed as markup.
+  showToast(message, type = 'success', duration = 3500) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
     toast.className = type === 'error' ? 'toast toast-error' : 'toast toast-success';
-    toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span id="toast-text"></span>`;
-    document.getElementById('toast-text').textContent = message;
+    toast.style.setProperty('--toast-duration', `${duration}ms`);
 
-    toast.style.display = 'block';
-    
-    // Clear after 3.5 seconds
-    if (this.toastTimeout) clearTimeout(this.toastTimeout);
-    this.toastTimeout = setTimeout(() => {
-      toast.style.display = 'none';
-    }, 3500);
+    const icon = document.createElement('i');
+    icon.className = `fa-solid ${type === 'error' ? 'fa-circle-xmark' : 'fa-circle-check'}`;
+    const text = document.createElement('span');
+    text.textContent = message;
+    toast.append(icon, text);
+    container.appendChild(toast);
+
+    // Keep the stack tidy if messages arrive in bursts.
+    while (container.children.length > 4) container.firstElementChild.remove();
+
+    setTimeout(() => {
+      toast.classList.add('toast-leaving');
+      toast.addEventListener('animationend', () => toast.remove(), { once: true });
+      setTimeout(() => toast.remove(), 300); // fallback (reduced motion)
+    }, duration);
+  },
+
+  // --- CONFIRMATION DIALOG ---
+
+  // Styled replacement for window.confirm(). Returns a Promise<boolean>.
+  // Title/message are injected via textContent because they can include
+  // user-authored data (e.g. an account email in a delete prompt).
+  confirm({ title = 'Are you sure?', message = '', confirmText = 'Confirm', cancelText = 'Cancel', danger = false } = {}) {
+    return new Promise(resolve => {
+      const modal = document.getElementById('modal-container');
+      const card = document.getElementById('modal-card');
+      if (!modal || !card) return resolve(window.confirm(message || title));
+
+      card.innerHTML = `
+        <div class="confirm-icon ${danger ? 'danger' : ''}">
+          <i class="fa-solid ${danger ? 'fa-triangle-exclamation' : 'fa-circle-question'}"></i>
+        </div>
+        <h3 id="confirm-title" style="font-size: 1.15rem; margin-bottom: 8px;"></h3>
+        <p id="confirm-message" style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.55;"></p>
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px;">
+          <button type="button" class="btn btn-secondary" id="confirm-cancel-btn"></button>
+          <button type="button" class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="confirm-accept-btn"></button>
+        </div>
+      `;
+      document.getElementById('confirm-title').textContent = title;
+      document.getElementById('confirm-message').textContent = message;
+      document.getElementById('confirm-cancel-btn').textContent = cancelText;
+      document.getElementById('confirm-accept-btn').textContent = confirmText;
+
+      const close = (result) => {
+        modal.style.display = 'none';
+        modal.onclick = null;
+        document.removeEventListener('keydown', onKey);
+        resolve(result);
+      };
+      const onKey = (e) => {
+        if (e.key === 'Escape') close(false);
+      };
+
+      document.getElementById('confirm-cancel-btn').onclick = () => close(false);
+      document.getElementById('confirm-accept-btn').onclick = () => close(true);
+      modal.onclick = (e) => { if (e.target === modal) close(false); };
+      document.addEventListener('keydown', onKey);
+
+      modal.style.display = 'flex';
+      document.getElementById('confirm-accept-btn').focus();
+    });
   }
 };
 

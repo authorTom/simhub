@@ -112,13 +112,12 @@ async function run() {
       // Clean up the created test scenario
       console.log('Cleaning up: Deleting UI test scenario...');
       const deleteBtn = await page.waitForSelector('#btn-delete-scenario');
-      
-      // Override confirm dialogue for delete
-      page.on('dialog', async dialog => {
-        await dialog.accept();
-      });
       await deleteBtn.click();
-      
+
+      // Accept the styled in-app confirmation dialog
+      const confirmBtn = await page.waitForSelector('#confirm-accept-btn', { timeout: 5000 });
+      await confirmBtn.click();
+
       await page.waitForSelector('#view-dashboard.active', { timeout: 5000 });
       console.log('Cleanup finished successfully.');
       
