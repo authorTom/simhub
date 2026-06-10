@@ -155,6 +155,20 @@ const api = {
     });
   },
 
+  async bulkUserAction(action, emails, role = null) {
+    return this.request('/api/users/bulk', {
+      method: 'POST',
+      body: JSON.stringify({ action, emails, role })
+    });
+  },
+
+  async bulkCreateUsers(users) {
+    return this.request('/api/users/bulk-create', {
+      method: 'POST',
+      body: JSON.stringify({ users })
+    });
+  },
+
   // --- Recycle Bin API ---
   async getRecycleBin() {
     return this.request('/api/recycle-bin');

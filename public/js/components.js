@@ -3088,71 +3088,338 @@ const components = {
 
   // --- 10. USER ADMINISTRATION LIFECYCLE ---
 
+  adminUsersState: {
+    users: [],
+    selected: new Set(),
+    query: '',
+    roleFilter: 'all'
+  },
+
   async renderAdminUsersView() {
-    const grid = document.getElementById('admin-users-grid');
-    if (!grid) return;
+    const tbody = document.getElementById('admin-users-tbody');
+    if (!tbody) return;
 
     try {
-      const users = await api.getUsers();
-      
-      grid.innerHTML = users.map(u => {
-        const isSelf = u.email.toLowerCase() === api.user.email.toLowerCase();
-        const roleBadgeClass = u.role === 'Admin' ? 'badge badge-admin' : 'badge badge-readonly';
-        
-        return `
-          <div class="glass-panel scenario-card" style="display: flex; flex-direction: column; justify-content: space-between;">
-            <div>
-              <div class="scenario-card-header">
-                <span class="scenario-code" style="font-size: 0.75rem;">${esc(u.email)}</span>
-                <span class="${roleBadgeClass}" style="font-size: 0.65rem;">
-                  ${esc(u.role)}
-                </span>
-              </div>
-              <div style="display: flex; align-items: center; gap: 16px; margin: 15px 0;">
-                <div style="background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple)); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 1.25rem; font-weight: 700; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);">
-                  ${esc(u.name.charAt(0).toUpperCase())}
-                </div>
-                <div>
-                  <h3 style="margin: 0; font-size: 1.2rem; font-weight: 600;">${esc(u.name)} ${isSelf ? '<span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">(You)</span>' : ''}</h3>
-                  <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 2px;">Faculty Account</p>
-                </div>
-              </div>
-            </div>
-            
-            <div>
-              <div class="scenario-meta-row" style="border-top: 1px solid var(--glass-border); padding-top: 12px; margin-bottom: 16px; font-size: 0.8rem; color: var(--text-muted);">
-                <div class="scenario-meta-item">
-                  <i class="fa-solid fa-key"></i> Pass: <code>••••••••</code>
-                </div>
-                <div class="scenario-meta-item">
-                  <i class="fa-solid fa-shield-halved"></i> Permissions: <strong>${u.role === 'Admin' ? 'Read/Write' : 'Read-Only'}</strong>
-                </div>
-              </div>
-              
-              <div class="scenario-actions">
-                <button class="btn btn-secondary" data-action="edit-user" data-email="${esc(u.email)}" style="flex: 1; padding: 8px;">
-                  <i class="fa-solid fa-pen-to-square"></i> Edit
-                </button>
-                <button class="btn btn-danger" data-action="delete-user" data-email="${esc(u.email)}" ${isSelf ? 'disabled' : ''} style="padding: 8px 12px;" title="${isSelf ? 'You cannot delete yourself.' : ''}">
-                  <i class="fa-solid fa-trash"></i>
-                </button>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      // Bind via data attributes + listeners: emails are user-authored, and
-      // interpolating them into inline onclick JS strings is XSS-prone (HTML
-      // entity escaping is undone by the parser before the JS engine runs).
-      grid.querySelectorAll('[data-action="edit-user"]').forEach(btn =>
-        btn.addEventListener('click', () => this.openUserModal(btn.dataset.email)));
-      grid.querySelectorAll('[data-action="delete-user"]').forEach(btn =>
-        btn.addEventListener('click', () => this.deleteUser(btn.dataset.email)));
-
+      this.adminUsersState.users = await api.getUsers();
+      this.adminUsersState.selected.clear();
+      this.renderUsersTable();
     } catch (err) {
       app.showToast('Failed to load users: ' + err.message, 'error');
     }
+  },
+
+  filterUsers() {
+    this.adminUsersState.query = document.getElementById('user-search')?.value.toLowerCase() || '';
+    this.adminUsersState.roleFilter = document.getElementById('user-role-filter')?.value || 'all';
+    this.renderUsersTable();
+  },
+
+  visibleUsers() {
+    const { users, query, roleFilter } = this.adminUsersState;
+    return users
+      .filter(u =>
+        (roleFilter === 'all' || u.role === roleFilter) &&
+        (!query || u.name.toLowerCase().includes(query) || u.email.toLowerCase().includes(query)))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  },
+
+  renderUsersTable() {
+    const tbody = document.getElementById('admin-users-tbody');
+    if (!tbody) return;
+
+    const state = this.adminUsersState;
+    const visible = this.visibleUsers();
+    const selfEmail = api.user.email.toLowerCase();
+
+    // Selection only ever contains emails that still exist
+    const known = new Set(state.users.map(u => u.email));
+    state.selected.forEach(e => { if (!known.has(e)) state.selected.delete(e); });
+
+    const countEl = document.getElementById('user-results-count');
+    if (countEl) {
+      countEl.textContent = visible.length === state.users.length
+        ? `${visible.length} account${visible.length === 1 ? '' : 's'}`
+        : `${visible.length} of ${state.users.length} accounts`;
+    }
+
+    if (visible.length === 0) {
+      tbody.innerHTML = `
+        <tr><td colspan="5" style="text-align:center; padding: 36px; color: var(--text-muted);">
+          No accounts match the current filters.
+        </td></tr>`;
+      this.updateBulkBar();
+      return;
+    }
+
+    tbody.innerHTML = visible.map(u => {
+      const isSelf = u.email.toLowerCase() === selfEmail;
+      const checked = state.selected.has(u.email);
+      const roleBadgeClass = u.role === 'Admin' ? 'badge badge-admin' : 'badge badge-readonly';
+      return `
+        <tr class="${checked ? 'row-selected' : ''}">
+          <td>
+            <input type="checkbox" class="user-row-cb" data-email="${esc(u.email)}"
+              ${checked ? 'checked' : ''} ${isSelf ? 'disabled title="Your own account cannot be bulk-edited."' : ''}>
+          </td>
+          <td>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <span class="user-avatar">${esc((u.name || '?').charAt(0).toUpperCase())}</span>
+              <span style="font-weight:500;">${esc(u.name)}${isSelf ? ' <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">(You)</span>' : ''}</span>
+            </div>
+          </td>
+          <td class="mono">${esc(u.email)}</td>
+          <td><span class="${roleBadgeClass}">${esc(u.role)}</span></td>
+          <td style="text-align:right; white-space:nowrap;">
+            <button class="icon-btn" data-action="edit-user" data-email="${esc(u.email)}" title="Edit account">
+              <i class="fa-solid fa-pen-to-square"></i>
+            </button>
+            <button class="icon-btn danger" data-action="delete-user" data-email="${esc(u.email)}"
+              ${isSelf ? 'disabled' : ''} title="${isSelf ? 'You cannot delete yourself.' : 'Delete account'}">
+              <i class="fa-solid fa-trash"></i>
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    // Bind via data attributes + listeners: emails are user-authored, and
+    // interpolating them into inline onclick JS strings is XSS-prone.
+    tbody.querySelectorAll('.user-row-cb').forEach(cb =>
+      cb.addEventListener('change', () => this.toggleUserSelection(cb.dataset.email, cb.checked)));
+    tbody.querySelectorAll('[data-action="edit-user"]').forEach(btn =>
+      btn.addEventListener('click', () => this.openUserModal(btn.dataset.email)));
+    tbody.querySelectorAll('[data-action="delete-user"]').forEach(btn =>
+      btn.addEventListener('click', () => this.deleteUser(btn.dataset.email)));
+
+    // Header select-all applies to visible, selectable rows
+    const selectAll = document.getElementById('user-select-all');
+    if (selectAll) {
+      const selectable = visible.filter(u => u.email.toLowerCase() !== selfEmail);
+      selectAll.checked = selectable.length > 0 && selectable.every(u => state.selected.has(u.email));
+      selectAll.onchange = () => {
+        selectable.forEach(u => {
+          if (selectAll.checked) state.selected.add(u.email);
+          else state.selected.delete(u.email);
+        });
+        this.renderUsersTable();
+      };
+    }
+
+    this.updateBulkBar();
+  },
+
+  toggleUserSelection(email, on) {
+    if (on) this.adminUsersState.selected.add(email);
+    else this.adminUsersState.selected.delete(email);
+    this.renderUsersTable();
+  },
+
+  updateBulkBar() {
+    const bar = document.getElementById('user-bulk-bar');
+    const count = document.getElementById('bulk-selected-count');
+    if (!bar || !count) return;
+    const n = this.adminUsersState.selected.size;
+    bar.style.display = n > 0 ? 'flex' : 'none';
+    count.textContent = `${n} selected`;
+  },
+
+  async bulkSetRole() {
+    const emails = Array.from(this.adminUsersState.selected);
+    const role = document.getElementById('bulk-role-select').value;
+    if (emails.length === 0) return;
+
+    const ok = await app.confirm({
+      title: `Change role for ${emails.length} account${emails.length === 1 ? '' : 's'}?`,
+      message: `The selected account${emails.length === 1 ? '' : 's'} will be set to ${role}. Active sessions pick up the new role immediately.`,
+      confirmText: 'Apply Role'
+    });
+    if (!ok) return;
+
+    try {
+      const result = await api.bulkUserAction('set-role', emails, role);
+      this.reportBulkOutcome(result, 'updated');
+      this.renderAdminUsersView();
+    } catch (err) {
+      app.showToast(err.message, 'error');
+    }
+  },
+
+  async bulkDeleteUsers() {
+    const emails = Array.from(this.adminUsersState.selected);
+    if (emails.length === 0) return;
+
+    const ok = await app.confirm({
+      title: `Delete ${emails.length} account${emails.length === 1 ? '' : 's'}?`,
+      message: 'The selected accounts will permanently lose access to SimHub and their sessions will be revoked. This cannot be undone.',
+      confirmText: 'Delete Accounts',
+      danger: true
+    });
+    if (!ok) return;
+
+    try {
+      const result = await api.bulkUserAction('delete', emails);
+      this.reportBulkOutcome(result, 'deleted');
+      this.renderAdminUsersView();
+    } catch (err) {
+      app.showToast(err.message, 'error');
+    }
+  },
+
+  reportBulkOutcome(result, verb) {
+    if (result.processed > 0) {
+      app.showToast(`${result.processed} account${result.processed === 1 ? '' : 's'} ${verb}.`, 'success');
+    }
+    (result.skipped || []).forEach(s =>
+      app.showToast(`${s.email}: ${s.reason}`, 'error'));
+  },
+
+  // Download the account list (no credentials) as a CSV file
+  exportUsersCsv() {
+    const users = this.adminUsersState.users;
+    if (!users.length) {
+      app.showToast('No users loaded to export.', 'error');
+      return;
+    }
+    const quote = v => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = ['email,name,role', ...users.map(u => [u.email, u.name, u.role].map(quote).join(','))].join('\r\n');
+    this.downloadFile(csv, `simhub_users_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv');
+    app.showToast('User list exported.', 'success');
+  },
+
+  downloadFile(content, filename, mime) {
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  // --- Bulk add: paste one account per line, passwords auto-generated ---
+
+  openBulkAddModal() {
+    const modal = document.getElementById('modal-container');
+    const modalContent = document.getElementById('modal-card');
+    if (!modal || !modalContent) return;
+
+    modalContent.innerHTML = `
+      <div class="flex-between m-b-20" style="margin-bottom: 20px;">
+        <h3 style="font-size:1.3rem; color: var(--accent-blue);">
+          <i class="fa-solid fa-user-group"></i> Bulk Add Faculty Users
+        </h3>
+        <button onclick="components.closeModal()" style="background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.2rem;">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form id="bulk-add-form">
+        <div class="form-group">
+          <label for="bulk-add-input">One account per line: <code style="font-family:var(--font-mono); font-size:0.78rem;">email, name, role</code></label>
+          <textarea id="bulk-add-input" rows="8" required
+            placeholder="jane.smith@simhub.local, Dr. Jane Smith, Admin&#10;sam.taylor@simhub.local, Sam Taylor, Read-Only&#10;li.wei@simhub.local, Dr. Li Wei"
+            style="font-family:var(--font-mono); font-size:0.82rem;"></textarea>
+          <p style="font-size:0.78rem; color:var(--text-muted); margin-top:6px;">
+            Role is optional (defaults to <strong>Read-Only</strong>). A secure temporary password is
+            generated for each account and shown once after creation.
+          </p>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+          <button type="button" class="btn btn-secondary" onclick="components.closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-emerald">
+            <i class="fa-solid fa-user-plus"></i> Create Accounts
+          </button>
+        </div>
+      </form>
+    `;
+
+    document.getElementById('bulk-add-form')
+      .addEventListener('submit', (e) => this.submitBulkAdd(e));
+
+    modal.style.display = 'flex';
+  },
+
+  async submitBulkAdd(e) {
+    e.preventDefault();
+    const lines = document.getElementById('bulk-add-input').value
+      .split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return;
+
+    const users = lines.map(line => {
+      const [email = '', name = '', role = 'Read-Only'] = line.split(',').map(p => p.trim());
+      return { email, name, role: role || 'Read-Only' };
+    });
+
+    try {
+      const result = await api.bulkCreateUsers(users);
+      this.showBulkAddResults(result);
+      this.renderAdminUsersView();
+    } catch (err) {
+      app.showToast(err.message, 'error');
+    }
+  },
+
+  // Show generated credentials once, with a CSV download for distribution
+  showBulkAddResults(result) {
+    const modal = document.getElementById('modal-container');
+    const modalContent = document.getElementById('modal-card');
+    if (!modal || !modalContent) return;
+
+    const created = result.created || [];
+    const skipped = result.skipped || [];
+
+    modalContent.innerHTML = `
+      <div class="flex-between m-b-20" style="margin-bottom: 16px;">
+        <h3 style="font-size:1.3rem; color: var(--accent-blue);">
+          <i class="fa-solid fa-circle-check" style="color:var(--accent-emerald);"></i> ${created.length} account${created.length === 1 ? '' : 's'} created
+        </h3>
+        <button onclick="components.closeModal()" style="background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.2rem;">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      ${created.length ? `
+        <p style="font-size:0.82rem; color:var(--text-secondary); margin-bottom:10px;">
+          <i class="fa-solid fa-triangle-exclamation" style="color:var(--accent-amber);"></i>
+          Temporary passwords are shown <strong>only once</strong>. Download them now to distribute securely.
+        </p>
+        <div style="max-height:220px; overflow-y:auto; border:1px solid var(--glass-border); border-radius:var(--border-radius-sm); margin-bottom:16px;">
+          ${created.map(c => `
+            <div class="cred-row">
+              <span style="overflow:hidden; text-overflow:ellipsis;">${esc(c.email)}</span>
+              <code>${c.tempPassword ? esc(c.tempPassword) : '(password as supplied)'}</code>
+            </div>
+          `).join('')}
+        </div>` : ''}
+
+      ${skipped.length ? `
+        <p style="font-size:0.82rem; color:var(--accent-red); margin-bottom:6px;">${skipped.length} row${skipped.length === 1 ? '' : 's'} skipped:</p>
+        <div style="max-height:120px; overflow-y:auto; font-size:0.8rem; color:var(--text-secondary); margin-bottom:16px;">
+          ${skipped.map(s => `<div style="padding:3px 0;">${esc(s.email)} — ${esc(s.reason)}</div>`).join('')}
+        </div>` : ''}
+
+      <div style="display:flex; justify-content:flex-end; gap:10px;">
+        ${created.length ? `
+          <button type="button" class="btn btn-secondary" id="bulk-creds-download">
+            <i class="fa-solid fa-download"></i> Download Credentials CSV
+          </button>` : ''}
+        <button type="button" class="btn btn-primary" onclick="components.closeModal()">Done</button>
+      </div>
+    `;
+
+    const dl = document.getElementById('bulk-creds-download');
+    if (dl) {
+      dl.addEventListener('click', () => {
+        const quote = v => `"${String(v).replace(/"/g, '""')}"`;
+        const csv = ['email,name,role,temporary_password',
+          ...created.map(c => [c.email, c.name, c.role, c.tempPassword || ''].map(quote).join(','))].join('\r\n');
+        this.downloadFile(csv, `simhub_new_accounts_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv');
+      });
+    }
+
+    modal.style.display = 'flex';
   },
 
   async openUserModal(userEmail = null) {
@@ -3194,7 +3461,12 @@ const components = {
         </div>
         <div class="form-group">
           <label for="user-password">Access Password</label>
-          <input type="text" id="user-password" ${existing ? '' : 'required'} value="" placeholder="${existing ? 'Leave blank to keep current password' : 'Enter robust access password'}">
+          <div style="display:flex; gap:8px;">
+            <input type="text" id="user-password" ${existing ? '' : 'required'} value="" placeholder="${existing ? 'Leave blank to keep current password' : 'Enter robust access password'}" style="flex:1;">
+            <button type="button" class="btn btn-secondary" id="user-password-generate" title="Generate a strong password" style="padding: 10px 14px;">
+              <i class="fa-solid fa-dice"></i> Generate
+            </button>
+          </div>
         </div>
         <div class="form-group">
           <label for="user-role">System Permission Level</label>
@@ -3219,7 +3491,24 @@ const components = {
     document.getElementById('user-modal-form')
       .addEventListener('submit', (e) => this.saveUser(e, existing ? existing.email : null));
 
+    document.getElementById('user-password-generate').addEventListener('click', () => {
+      const field = document.getElementById('user-password');
+      field.value = this.generatePassword();
+      field.select();
+      navigator.clipboard?.writeText(field.value)
+        .then(() => app.showToast('Password generated and copied to clipboard.', 'success'))
+        .catch(() => app.showToast('Password generated — copy it before saving.', 'success'));
+    });
+
     modal.style.display = 'flex';
+  },
+
+  // Strong readable password from an unambiguous alphabet (matches server)
+  generatePassword() {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const bytes = new Uint8Array(14);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, b => alphabet[b % alphabet.length]).join('');
   },
 
   async saveUser(e, existingEmail) {

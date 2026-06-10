@@ -664,6 +664,138 @@ app.delete('/api/users/:email', authenticate, requireAdmin, (req, res) => {
   }
 });
 
+// Generate a readable temporary password from an unambiguous alphabet.
+function generateTempPassword() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const bytes = crypto.randomBytes(14);
+  let out = '';
+  for (const b of bytes) out += alphabet[b % alphabet.length];
+  return out;
+}
+
+const BULK_LIMIT = 200;
+
+// Bulk operations on existing users: set-role or delete.
+// The whole batch is validated against the same guards as single-user
+// operations (no self role-change/deletion, at least one Admin remains)
+// before anything is written.
+app.post('/api/users/bulk', authenticate, requireAdmin, (req, res) => {
+  const { action, emails, role } = req.body;
+
+  if (!['set-role', 'delete'].includes(action)) {
+    return res.status(400).json({ error: 'Invalid action. Must be "set-role" or "delete".' });
+  }
+  if (!Array.isArray(emails) || emails.length === 0 || emails.length > BULK_LIMIT) {
+    return res.status(400).json({ error: `Provide between 1 and ${BULK_LIMIT} emails.` });
+  }
+  if (action === 'set-role' && !VALID_ROLES.includes(role)) {
+    return res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}.` });
+  }
+
+  const selfEmail = req.user.email.toLowerCase();
+  const targets = [];
+  const skipped = [];
+
+  for (const raw of emails) {
+    const email = String(raw).toLowerCase().trim();
+    if (!USERS[email]) {
+      skipped.push({ email, reason: 'User not found.' });
+    } else if (email === selfEmail) {
+      skipped.push({ email, reason: action === 'delete' ? 'You cannot delete your own account.' : 'You cannot change your own role.' });
+    } else if (targets.includes(email)) {
+      skipped.push({ email, reason: 'Duplicate entry.' });
+    } else {
+      targets.push(email);
+    }
+  }
+
+  // Guard: simulate the batch and require at least one Admin afterwards.
+  const adminsAfter = Object.values(USERS).filter(u => {
+    const email = u.email.toLowerCase();
+    if (targets.includes(email)) {
+      if (action === 'delete') return false;
+      return role === 'Admin';
+    }
+    return u.role === 'Admin';
+  }).length;
+  if (targets.length > 0 && adminsAfter < 1) {
+    return res.status(400).json({ error: 'Operation prevented. At least one Admin account must remain.' });
+  }
+
+  try {
+    targets.forEach(email => {
+      if (action === 'delete') {
+        delete USERS[email];
+        revokeSessionsFor(email);
+      } else {
+        USERS[email].role = role;
+        updateSessionsFor(email, { role });
+      }
+    });
+    if (targets.length > 0) saveUsers();
+    res.json({ success: true, processed: targets.length, skipped });
+  } catch (err) {
+    res.status(500).json({ error: 'Bulk operation failed: ' + err.message });
+  }
+});
+
+// Bulk-create users. Rows without a password get a generated temporary
+// password, echoed back exactly once in the response so the admin can
+// distribute credentials; supplied passwords are never echoed.
+app.post('/api/users/bulk-create', authenticate, requireAdmin, async (req, res) => {
+  const { users } = req.body;
+
+  if (!Array.isArray(users) || users.length === 0 || users.length > BULK_LIMIT) {
+    return res.status(400).json({ error: `Provide between 1 and ${BULK_LIMIT} users.` });
+  }
+
+  const created = [];
+  const skipped = [];
+  const pendingEmails = new Set();
+
+  try {
+    for (const row of users) {
+      const email = String(row.email || '').toLowerCase().trim();
+      const name = String(row.name || '').trim();
+      const role = row.role || 'Read-Only';
+
+      if (!isValidEmail(email)) {
+        skipped.push({ email: email || '(blank)', reason: 'Invalid email address format.' });
+        continue;
+      }
+      if (USERS[email] || pendingEmails.has(email)) {
+        skipped.push({ email, reason: 'A user with this email already exists.' });
+        continue;
+      }
+      if (!name) {
+        skipped.push({ email, reason: 'Name is required.' });
+        continue;
+      }
+      if (!VALID_ROLES.includes(role)) {
+        skipped.push({ email, reason: `Invalid role "${role}". Must be one of: ${VALID_ROLES.join(', ')}.` });
+        continue;
+      }
+
+      const suppliedPassword = typeof row.password === 'string' && row.password.length > 0;
+      const password = suppliedPassword ? row.password : generateTempPassword();
+
+      USERS[email] = {
+        email,
+        password: await hashPassword(password),
+        role,
+        name
+      };
+      pendingEmails.add(email);
+      created.push({ email, name, role, tempPassword: suppliedPassword ? null : password });
+    }
+
+    if (created.length > 0) saveUsers();
+    res.status(created.length > 0 ? 201 : 200).json({ success: true, created, skipped });
+  } catch (err) {
+    res.status(500).json({ error: 'Bulk create failed: ' + err.message });
+  }
+});
+
 
 // --- RECYCLE BIN ENDPOINTS ---
 
