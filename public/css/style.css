@@ -326,6 +326,10 @@ main {
   max-width: 1600px;
   margin: 0 auto;
   width: 100%;
+  /* Grid items default to min-width:auto, which lets wide nowrap content
+     (e.g. the wizard stepper) push the whole page beyond the viewport.
+     Allow main to shrink so inner scroll containers can do their job. */
+  min-width: 0;
 }
 
 .view-section {
@@ -1837,6 +1841,12 @@ body.pdf-printing .detail-layout { display: block !important; }
   font-size: 1.25rem;
 }
 
+/* Collapse stepper labels to numbered circles when space is tight; the
+   active step keeps its label so context is never lost. */
+@media (max-width: 1599px) {
+  .editor-tab:not(.active) .step-label {
+    display: none;
+  }
 /* --- User administration: toolbar, bulk bar, data table --- */
 .users-toolbar {
   display: flex;
