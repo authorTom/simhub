@@ -212,21 +212,16 @@ const app = {
   
   showToast(message, type = 'success') {
     const toast = document.getElementById('toast-message');
-    const text = document.getElementById('toast-text');
-    if (!toast || !text) return;
+    if (!toast) return;
 
-    text.innerText = message;
-
-    // Escape the message: it can contain user-controlled data (e.g. the
-    // account name in "Welcome back, ...") and must not be parsed as markup.
-    const safeMessage = escapeHtml(message);
-    if (type === 'error') {
-      toast.className = 'toast toast-error';
-      toast.innerHTML = `<i class="fa-solid fa-circle-xmark"></i> ${safeMessage}`;
-    } else {
-      toast.className = 'toast toast-success';
-      toast.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${safeMessage}`;
-    }
+    // Rebuild the icon + text span each call (the span is recreated so the
+    // element always exists on subsequent toasts), then inject the message
+    // via textContent: it can contain user-controlled data (e.g. the account
+    // name in "Welcome back, ...") and must never be parsed as markup.
+    const icon = type === 'error' ? 'fa-circle-xmark' : 'fa-circle-check';
+    toast.className = type === 'error' ? 'toast toast-error' : 'toast toast-success';
+    toast.innerHTML = `<i class="fa-solid ${icon}"></i> <span id="toast-text"></span>`;
+    document.getElementById('toast-text').textContent = message;
 
     toast.style.display = 'block';
     

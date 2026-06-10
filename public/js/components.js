@@ -97,12 +97,15 @@ const components = {
   },
 
   selectProgramme(id) {
-    this.activeProgrammeId = id;
     const desc = document.getElementById('catalog-description');
     const title = document.getElementById('catalog-title');
-    
-    if (id) {
-      const prog = this.allProgrammes.find(p => p.id === id);
+
+    // The selected programme may have been deleted since it was activated;
+    // fall back to the full library rather than crashing.
+    const prog = id ? this.allProgrammes.find(p => p.id === id) : null;
+    this.activeProgrammeId = prog ? id : null;
+
+    if (prog) {
       title.innerText = prog.name;
       desc.innerText = prog.description || 'Simulations aligned to this programme.';
     } else {
@@ -121,7 +124,9 @@ const components = {
     let filtered = this.allScenarios;
     if (this.activeProgrammeId) {
       const prog = this.allProgrammes.find(p => p.id === this.activeProgrammeId);
-      filtered = this.allScenarios.filter(s => prog.scenarioIds && prog.scenarioIds.includes(s.id));
+      filtered = prog
+        ? this.allScenarios.filter(s => prog.scenarioIds && prog.scenarioIds.includes(s.id))
+        : this.allScenarios;
     }
 
     const searchQuery = document.getElementById('scenario-search')?.value.toLowerCase() || '';
@@ -293,7 +298,7 @@ const components = {
         </button>
       </div>
 
-      <form id="programme-modal-form" onsubmit="components.saveProgramme(event, ${existing ? `'${existing.id}'` : 'null'})">
+      <form id="programme-modal-form">
         <div class="form-group">
           <label for="prog-name">Programme Name</label>
           <input type="text" id="prog-name" required value="${existing ? esc(existing.name) : ''}" placeholder="e.g. Foundation Year 1 Induction">
@@ -317,6 +322,11 @@ const components = {
         </div>
       </form>
     `;
+
+    // Bind via listener (not inline attribute interpolation) so the id is
+    // passed as a real JS value rather than markup.
+    document.getElementById('programme-modal-form')
+      .addEventListener('submit', (e) => this.saveProgramme(e, existing ? existing.id : null));
 
     modal.style.display = 'flex';
   },
@@ -1054,7 +1064,7 @@ const components = {
       <button type="button" class="repeater-remove" onclick="this.parentElement.remove()"><i class="fa-solid fa-trash"></i></button>
       <div class="form-group" style="margin-bottom:0;">
         <label>Outcome Description</label>
-        <input type="text" class="tech-outcome-desc" required value="${esc(outcome)}" placeholder="e.g. Recognise acute PE">
+        <input type="text" class="tech-outcome-desc" value="${esc(outcome)}" placeholder="e.g. Recognise acute PE">
       </div>
       <div class="form-group" style="margin-bottom:0;">
         <label>Curriculum Mapping</label>
@@ -1072,7 +1082,7 @@ const components = {
       <button type="button" class="repeater-remove" onclick="this.parentElement.remove()"><i class="fa-solid fa-trash"></i></button>
       <div class="form-group" style="margin-bottom:0;">
         <label>Outcome Description</label>
-        <input type="text" class="nontech-outcome-desc" required value="${esc(outcome)}" placeholder="e.g. Deliver SBAR handover">
+        <input type="text" class="nontech-outcome-desc" value="${esc(outcome)}" placeholder="e.g. Deliver SBAR handover">
       </div>
       <div class="form-group" style="margin-bottom:0;">
         <label>Framework / Domain</label>
@@ -1090,26 +1100,26 @@ const components = {
       <button type="button" class="repeater-remove" onclick="this.parentElement.remove()"><i class="fa-solid fa-trash"></i></button>
       <div class="form-group">
         <label>Role Receiving Handover</label>
-        <input type="text" class="sbar-role" required value="${esc(role)}" placeholder="e.g. FY1 Doctor">
+        <input type="text" class="sbar-role" value="${esc(role)}" placeholder="e.g. FY1 Doctor">
       </div>
       <div class="form-row-2">
         <div class="form-group">
           <label>S - Situation</label>
-          <textarea class="sbar-s" rows="2" required placeholder="Who/what/where...">${esc(situation)}</textarea>
+          <textarea class="sbar-s" rows="2" placeholder="Who/what/where...">${esc(situation)}</textarea>
         </div>
         <div class="form-group">
           <label>B - Background</label>
-          <textarea class="sbar-b" rows="2" required placeholder="History/context...">${esc(background)}</textarea>
+          <textarea class="sbar-b" rows="2" placeholder="History/context...">${esc(background)}</textarea>
         </div>
       </div>
       <div class="form-row-2" style="margin-bottom:0;">
         <div class="form-group" style="margin-bottom:0;">
           <label>A - Assessment</label>
-          <textarea class="sbar-a" rows="2" required placeholder="Active concerns...">${esc(assessment)}</textarea>
+          <textarea class="sbar-a" rows="2" placeholder="Active concerns...">${esc(assessment)}</textarea>
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <label>R - Recommendation</label>
-          <textarea class="sbar-r" rows="2" required placeholder="What is needed...">${esc(recommendation)}</textarea>
+          <textarea class="sbar-r" rows="2" placeholder="What is needed...">${esc(recommendation)}</textarea>
         </div>
       </div>
     `;
@@ -1124,11 +1134,11 @@ const components = {
       <button type="button" class="repeater-remove" onclick="this.parentElement.remove()"><i class="fa-solid fa-trash"></i></button>
       <div class="form-group" style="margin-bottom:0;">
         <label>Faculty Role</label>
-        <input type="text" class="fac-role" required value="${esc(role)}" placeholder="e.g. Control room tech">
+        <input type="text" class="fac-role" value="${esc(role)}" placeholder="e.g. Control room tech">
       </div>
       <div class="form-group" style="margin-bottom:0;">
         <label>Responsibilities</label>
-        <input type="text" class="fac-resp" required value="${esc(responsibilities)}" placeholder="What they do before/during...">
+        <input type="text" class="fac-resp" value="${esc(responsibilities)}" placeholder="What they do before/during...">
       </div>
       <div class="form-group" style="margin-bottom:0;">
         <label>Required?</label>
@@ -1149,15 +1159,15 @@ const components = {
       <button type="button" class="repeater-remove" onclick="this.parentElement.remove()"><i class="fa-solid fa-trash"></i></button>
       <div class="form-group">
         <label>Confederate Role Name</label>
-        <input type="text" class="actor-role" required value="${esc(role)}" placeholder="e.g. Ward nurse, Relative">
+        <input type="text" class="actor-role" value="${esc(role)}" placeholder="e.g. Ward nurse, Relative">
       </div>
       <div class="form-group">
         <label>Purpose in Scenario</label>
-        <input type="text" class="actor-purpose" required value="${esc(purpose)}" placeholder="e.g. Provide rescue prompt if PE missed">
+        <input type="text" class="actor-purpose" value="${esc(purpose)}" placeholder="e.g. Provide rescue prompt if PE missed">
       </div>
       <div class="form-group" style="grid-column:1 / -1; margin-bottom:0;">
         <label>Key Script / Behaviours / Prompt Cues</label>
-        <textarea class="actor-script" rows="2" required placeholder="What lines they deliver...">${esc(script)}</textarea>
+        <textarea class="actor-script" rows="2" placeholder="What lines they deliver...">${esc(script)}</textarea>
       </div>
     `;
     container.appendChild(row);
@@ -1181,11 +1191,11 @@ const components = {
       </div>
       <div class="form-group" style="margin-bottom:0;">
         <label>Item Name</label>
-        <input type="text" class="equip-item" required value="${esc(item)}" placeholder="e.g. 15L Non-rebreathe mask">
+        <input type="text" class="equip-item" value="${esc(item)}" placeholder="e.g. 15L Non-rebreathe mask">
       </div>
       <div class="form-group" style="margin-bottom:0;">
         <label>Qty / Notes</label>
-        <input type="text" class="equip-qty" required value="${esc(qty)}" placeholder="e.g. 1, reservoir intact">
+        <input type="text" class="equip-qty" value="${esc(qty)}" placeholder="e.g. 1, reservoir intact">
       </div>
     `;
     container.appendChild(row);
@@ -1199,15 +1209,15 @@ const components = {
       <button type="button" class="repeater-remove" onclick="this.parentElement.remove()"><i class="fa-solid fa-trash"></i></button>
       <div class="form-group">
         <label>Drug Name</label>
-        <input type="text" class="med-drug" required value="${esc(drug)}" placeholder="e.g. Enoxaparin">
+        <input type="text" class="med-drug" value="${esc(drug)}" placeholder="e.g. Enoxaparin">
       </div>
       <div class="form-group">
         <label>Route</label>
-        <input type="text" class="med-route" required value="${esc(route)}" placeholder="e.g. SC, IV bolus, PO">
+        <input type="text" class="med-route" value="${esc(route)}" placeholder="e.g. SC, IV bolus, PO">
       </div>
       <div class="form-group" style="margin-bottom:0;">
         <label>Strength Presented</label>
-        <input type="text" class="med-strength" required value="${esc(strength)}" placeholder="e.g. 40 mg / 0.4 mL">
+        <input type="text" class="med-strength" value="${esc(strength)}" placeholder="e.g. 40 mg / 0.4 mL">
       </div>
       <div class="form-group" style="margin-bottom:0;">
         <label>Clinical Notes</label>
@@ -1226,7 +1236,7 @@ const components = {
       <div class="form-row-2">
         <div class="form-group">
           <label>Learning Point / Outcome Link</label>
-          <input type="text" class="debrief-analysis-point" required value="${esc(point)}" placeholder="e.g. Early recognition of VTE">
+          <input type="text" class="debrief-analysis-point" value="${esc(point)}" placeholder="e.g. Early recognition of VTE">
         </div>
         <div class="form-group">
           <label>Debrief Strategy</label>
@@ -1239,7 +1249,7 @@ const components = {
       </div>
       <div class="form-group" style="margin-bottom:0;">
         <label>Suggested Question / Scenario Script Prompt</label>
-        <textarea class="debrief-analysis-question" rows="2" required placeholder="I noticed that... I am curious what you were weighing up?">${esc(question)}</textarea>
+        <textarea class="debrief-analysis-question" rows="2" placeholder="I noticed that... I am curious what you were weighing up?">${esc(question)}</textarea>
       </div>
     `;
     container.appendChild(row);
@@ -1253,19 +1263,19 @@ const components = {
       <button type="button" class="repeater-remove" onclick="this.parentElement.remove()"><i class="fa-solid fa-trash"></i></button>
       <div class="form-group">
         <label>Version</label>
-        <input type="text" class="hist-ver" required value="${esc(version)}" placeholder="e.g. 1.0">
+        <input type="text" class="hist-ver" value="${esc(version)}" placeholder="e.g. 1.0">
       </div>
       <div class="form-group">
         <label>Date (DD/MM/YYYY)</label>
-        <input type="text" class="hist-date" required value="${esc(date)}" placeholder="e.g. 27/05/2026">
+        <input type="text" class="hist-date" value="${esc(date)}" placeholder="e.g. 27/05/2026">
       </div>
       <div class="form-group" style="margin-bottom:0;">
         <label>Author</label>
-        <input type="text" class="hist-auth" required value="${esc(author)}" placeholder="e.g. Dr. Smith">
+        <input type="text" class="hist-auth" value="${esc(author)}" placeholder="e.g. Dr. Smith">
       </div>
       <div class="form-group" style="margin-bottom:0;">
         <label>Summary of Changes</label>
-        <input type="text" class="hist-change" required value="${esc(change)}" placeholder="e.g. Initial creation">
+        <input type="text" class="hist-change" value="${esc(change)}" placeholder="e.g. Initial creation">
       </div>
     `;
     container.appendChild(row);
@@ -1296,17 +1306,17 @@ const components = {
       <div class="form-row-2">
         <div class="form-group">
           <label>Phase Name</label>
-          <input type="text" class="phase-name-input" required value="${esc(p.phaseName)}" placeholder="e.g. Baseline, Deterioration, Resolution">
+          <input type="text" class="phase-name-input" value="${esc(p.phaseName)}" placeholder="e.g. Baseline, Deterioration, Resolution">
         </div>
         <div class="form-group">
           <label>Expected Phase Duration</label>
-          <input type="text" class="phase-duration-input" required value="${esc(p.duration)}" placeholder="e.g. 3 - 5 minutes">
+          <input type="text" class="phase-duration-input" value="${esc(p.duration)}" placeholder="e.g. 3 - 5 minutes">
         </div>
       </div>
 
       <div class="form-group">
         <label>Phase Entrance Trigger</label>
-        <input type="text" class="phase-trigger-input" required value="${esc(p.trigger)}" placeholder="What event triggers entry? e.g. oxygen applied, scenario starts">
+        <input type="text" class="phase-trigger-input" value="${esc(p.trigger)}" placeholder="What event triggers entry? e.g. oxygen applied, scenario starts">
       </div>
 
       <!-- Vitals block inside editor -->
@@ -1314,27 +1324,27 @@ const components = {
       <div class="form-row-3" style="display:grid; grid-template-columns: repeat(6, 1fr); gap:10px; margin-bottom:16px;">
         <div class="form-group" style="margin-bottom:0;">
           <label style="font-size:0.75rem; color:#10b981;">HR (bpm)</label>
-          <input type="text" class="phase-vital-hr" required value="${esc(p.vitals?.hr || '')}" placeholder="100">
+          <input type="text" class="phase-vital-hr" value="${esc(p.vitals?.hr || '')}" placeholder="100">
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <label style="font-size:0.75rem; color:#3b82f6;">RR (min)</label>
-          <input type="text" class="phase-vital-rr" required value="${esc(p.vitals?.rr || '')}" placeholder="24">
+          <input type="text" class="phase-vital-rr" value="${esc(p.vitals?.rr || '')}" placeholder="24">
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <label style="font-size:0.75rem; color:#eab308;">SpO2 (%)</label>
-          <input type="text" class="phase-vital-spo2" required value="${esc(p.vitals?.spo2 || '')}" placeholder="91">
+          <input type="text" class="phase-vital-spo2" value="${esc(p.vitals?.spo2 || '')}" placeholder="91">
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <label style="font-size:0.75rem; color:#ef4444;">BP (mmHg)</label>
-          <input type="text" class="phase-vital-bp" required value="${esc(p.vitals?.bp || '')}" placeholder="120/80">
+          <input type="text" class="phase-vital-bp" value="${esc(p.vitals?.bp || '')}" placeholder="120/80">
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <label style="font-size:0.75rem; color:#f43f5e;">Temp (°C)</label>
-          <input type="text" class="phase-vital-temp" required value="${esc(p.vitals?.temp || '')}" placeholder="37.2">
+          <input type="text" class="phase-vital-temp" value="${esc(p.vitals?.temp || '')}" placeholder="37.2">
         </div>
         <div class="form-group" style="margin-bottom:0;">
           <label style="font-size:0.75rem; color:#a855f7;">GCS / AVPU</label>
-          <input type="text" class="phase-vital-gcs" required value="${esc(p.vitals?.gcs || '')}" placeholder="A/15">
+          <input type="text" class="phase-vital-gcs" value="${esc(p.vitals?.gcs || '')}" placeholder="A/15">
         </div>
       </div>
 
@@ -1344,21 +1354,21 @@ const components = {
           <h6 style="color:var(--text-secondary); margin-bottom:10px;">Patient Presentation</h6>
           <div class="form-group">
             <label style="font-size:0.8rem;">Appearance & Body Language</label>
-            <input type="text" class="phase-pres-appearance" required value="${esc(p.patientPresentation?.appearance || '')}" placeholder="e.g. clutch chest, diaphoretic">
+            <input type="text" class="phase-pres-appearance" value="${esc(p.patientPresentation?.appearance || '')}" placeholder="e.g. clutch chest, diaphoretic">
           </div>
           <div class="form-row-2" style="margin-bottom:10px;">
             <div class="form-group" style="margin-bottom:0;">
               <label style="font-size:0.8rem;">Mood / Affect</label>
-              <input type="text" class="phase-pres-mood" required value="${esc(p.patientPresentation?.mood || '')}" placeholder="e.g. anxious, cooperative">
+              <input type="text" class="phase-pres-mood" value="${esc(p.patientPresentation?.mood || '')}" placeholder="e.g. anxious, cooperative">
             </div>
             <div class="form-group" style="margin-bottom:0;">
               <label style="font-size:0.8rem;">Communication</label>
-              <input type="text" class="phase-pres-comm" required value="${esc(p.patientPresentation?.communication || '')}" placeholder="e.g. short sentences, gasping">
+              <input type="text" class="phase-pres-comm" value="${esc(p.patientPresentation?.communication || '')}" placeholder="e.g. short sentences, gasping">
             </div>
           </div>
           <div class="form-group" style="margin-bottom:0;">
             <label style="font-size:0.8rem;">Scripted Patient Lines</label>
-            <textarea class="phase-pres-lines" rows="2" required placeholder="What the patient says: 'It hurts so bad...'">${esc(p.patientPresentation?.keyLines || '')}</textarea>
+            <textarea class="phase-pres-lines" rows="2" placeholder="What the patient says: 'It hurts so bad...'">${esc(p.patientPresentation?.keyLines || '')}</textarea>
           </div>
         </div>
 
@@ -1369,8 +1379,8 @@ const components = {
             <div class="phase-investigations-repeater" style="margin-bottom:10px;">
               ${(p.investigations || []).map(inv => `
                 <div style="display:flex; gap:8px; margin-bottom:6px;">
-                  <input type="text" class="inv-name" required value="${esc(inv.name)}" placeholder="e.g. 12-lead ECG" style="flex:1; padding:4px 8px; font-size:0.8rem;">
-                  <input type="text" class="inv-result" required value="${esc(inv.result)}" placeholder="e.g. Sinus tachy" style="flex:1.5; padding:4px 8px; font-size:0.8rem;">
+                  <input type="text" class="inv-name" value="${esc(inv.name)}" placeholder="e.g. 12-lead ECG" style="flex:1; padding:4px 8px; font-size:0.8rem;">
+                  <input type="text" class="inv-result" value="${esc(inv.result)}" placeholder="e.g. Sinus tachy" style="flex:1.5; padding:4px 8px; font-size:0.8rem;">
                   <button type="button" onclick="this.parentElement.remove()" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
                 </div>
               `).join('')}
@@ -1390,8 +1400,8 @@ const components = {
             <div class="phase-actions-repeater" style="margin-bottom:10px;">
               ${(p.expectedActions || []).map(act => `
                 <div style="display:flex; gap:8px; margin-bottom:6px;">
-                  <input type="text" class="act-role" required value="${esc(act.role)}" placeholder="e.g. Lead, Team" style="flex:1; padding:4px 8px; font-size:0.8rem;">
-                  <input type="text" class="act-desc" required value="${esc(act.action)}" placeholder="e.g. Start 15L O2" style="flex:2.5; padding:4px 8px; font-size:0.8rem;">
+                  <input type="text" class="act-role" value="${esc(act.role)}" placeholder="e.g. Lead, Team" style="flex:1; padding:4px 8px; font-size:0.8rem;">
+                  <input type="text" class="act-desc" value="${esc(act.action)}" placeholder="e.g. Start 15L O2" style="flex:2.5; padding:4px 8px; font-size:0.8rem;">
                   <button type="button" onclick="this.parentElement.remove()" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
                 </div>
               `).join('')}
@@ -1409,8 +1419,8 @@ const components = {
             <div class="phase-cues-repeater" style="margin-bottom:10px;">
               ${(p.cues || []).map(cue => `
                 <div style="display:flex; gap:8px; margin-bottom:6px;">
-                  <input type="text" class="cue-cond" required value="${esc(cue.condition)}" placeholder="e.g. If no action after 5 min" style="flex:1.5; padding:4px 8px; font-size:0.8rem;">
-                  <input type="text" class="cue-prompt" required value="${esc(cue.cue)}" placeholder="e.g. SP complains of calf pain" style="flex:2.5; padding:4px 8px; font-size:0.8rem;">
+                  <input type="text" class="cue-cond" value="${esc(cue.condition)}" placeholder="e.g. If no action after 5 min" style="flex:1.5; padding:4px 8px; font-size:0.8rem;">
+                  <input type="text" class="cue-prompt" value="${esc(cue.cue)}" placeholder="e.g. SP complains of calf pain" style="flex:2.5; padding:4px 8px; font-size:0.8rem;">
                   <button type="button" onclick="this.parentElement.remove()" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
                 </div>
               `).join('')}
@@ -1432,8 +1442,8 @@ const components = {
     row.style.gap = '8px';
     row.style.marginBottom = '6px';
     row.innerHTML = `
-      <input type="text" class="inv-name" required placeholder="e.g. ABG, ECG" style="flex:1; padding:4px 8px; font-size:0.8rem;">
-      <input type="text" class="inv-result" required placeholder="e.g. Result description" style="flex:1.5; padding:4px 8px; font-size:0.8rem;">
+      <input type="text" class="inv-name" placeholder="e.g. ABG, ECG" style="flex:1; padding:4px 8px; font-size:0.8rem;">
+      <input type="text" class="inv-result" placeholder="e.g. Result description" style="flex:1.5; padding:4px 8px; font-size:0.8rem;">
       <button type="button" onclick="this.parentElement.remove()" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
     `;
     container.appendChild(row);
@@ -1446,8 +1456,8 @@ const components = {
     row.style.gap = '8px';
     row.style.marginBottom = '6px';
     row.innerHTML = `
-      <input type="text" class="act-role" required placeholder="e.g. Lead, Team" style="flex:1; padding:4px 8px; font-size:0.8rem;">
-      <input type="text" class="act-desc" required placeholder="e.g. Perform A-E assessment" style="flex:2.5; padding:4px 8px; font-size:0.8rem;">
+      <input type="text" class="act-role" placeholder="e.g. Lead, Team" style="flex:1; padding:4px 8px; font-size:0.8rem;">
+      <input type="text" class="act-desc" placeholder="e.g. Perform A-E assessment" style="flex:2.5; padding:4px 8px; font-size:0.8rem;">
       <button type="button" onclick="this.parentElement.remove()" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
     `;
     container.appendChild(row);
@@ -1460,8 +1470,8 @@ const components = {
     row.style.gap = '8px';
     row.style.marginBottom = '6px';
     row.innerHTML = `
-      <input type="text" class="cue-cond" required placeholder="e.g. If PE missed at 5m" style="flex:1.5; padding:4px 8px; font-size:0.8rem;">
-      <input type="text" class="cue-prompt" required placeholder="e.g. SP nurse prompts: leg swollen?" style="flex:2.5; padding:4px 8px; font-size:0.8rem;">
+      <input type="text" class="cue-cond" placeholder="e.g. If PE missed at 5m" style="flex:1.5; padding:4px 8px; font-size:0.8rem;">
+      <input type="text" class="cue-prompt" placeholder="e.g. SP nurse prompts: leg swollen?" style="flex:2.5; padding:4px 8px; font-size:0.8rem;">
       <button type="button" onclick="this.parentElement.remove()" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
     `;
     container.appendChild(row);
@@ -1493,42 +1503,42 @@ const components = {
         <div class="form-row-3">
           <div class="form-group">
             <label for="form-code">Scenario Code</label>
-            <input type="text" id="form-code" required value="${esc(s.code)}" placeholder="e.g. UHB-UG-PE-01">
+            <input type="text" id="form-code" value="${esc(s.code)}" placeholder="e.g. UHB-UG-PE-01">
           </div>
           <div class="form-group">
             <label for="form-title">Scenario Title</label>
-            <input type="text" id="form-title" required value="${esc(s.title)}" placeholder="e.g. Acute Pulmonary Embolism">
+            <input type="text" id="form-title" value="${esc(s.title)}" placeholder="e.g. Acute Pulmonary Embolism">
           </div>
           <div class="form-group">
             <label for="form-version">Version</label>
-            <input type="text" id="form-version" required value="${esc(s.version)}" placeholder="e.g. 1.0">
+            <input type="text" id="form-version" value="${esc(s.version)}" placeholder="e.g. 1.0">
           </div>
         </div>
 
         <div class="form-row-2">
           <div class="form-group">
             <label for="form-lastReviewed">Last Reviewed Date</label>
-            <input type="text" id="form-lastReviewed" required value="${esc(s.lastReviewed)}" placeholder="DD/MM/YYYY">
+            <input type="text" id="form-lastReviewed" value="${esc(s.lastReviewed)}" placeholder="DD/MM/YYYY">
           </div>
           <div class="form-group">
             <label for="form-nextReviewDue">Next Review Due Date</label>
-            <input type="text" id="form-nextReviewDue" required value="${esc(s.nextReviewDue)}" placeholder="DD/MM/YYYY">
+            <input type="text" id="form-nextReviewDue" value="${esc(s.nextReviewDue)}" placeholder="DD/MM/YYYY">
           </div>
         </div>
 
         <div class="form-group">
           <label for="form-authors">Author(s)</label>
-          <input type="text" id="form-authors" required value="${esc(s.authors)}" placeholder="Names, roles, institutions">
+          <input type="text" id="form-authors" value="${esc(s.authors)}" placeholder="Names, roles, institutions">
         </div>
 
         <div class="form-row-2">
           <div class="form-group">
             <label for="form-clinicalReviewer">Clinical Sign-Off Reviewer</label>
-            <input type="text" id="form-clinicalReviewer" required value="${esc(s.clinicalReviewer)}" placeholder="Name, role, date signed off">
+            <input type="text" id="form-clinicalReviewer" value="${esc(s.clinicalReviewer)}" placeholder="Name, role, date signed off">
           </div>
           <div class="form-group">
             <label for="form-educationalReviewer">Educational Sign-Off Reviewer</label>
-            <input type="text" id="form-educationalReviewer" required value="${esc(s.educationalReviewer)}" placeholder="Name, role, date signed off">
+            <input type="text" id="form-educationalReviewer" value="${esc(s.educationalReviewer)}" placeholder="Name, role, date signed off">
           </div>
         </div>
 
@@ -1546,13 +1556,13 @@ const components = {
         <h3 style="margin-top:30px; margin-bottom:16px; color:var(--accent-blue);"><i class="fa-solid fa-eye"></i> Scenario Summary Overview</h3>
         <div class="form-group">
           <label for="form-summary">Scenario Summary (At-A-Glance)</label>
-          <textarea id="form-summary" rows="3" required placeholder="2-3 sentences. Summarise what happens and what is being tested.">${esc(s.overview?.summary || '')}</textarea>
+          <textarea id="form-summary" rows="3" placeholder="2-3 sentences. Summarise what happens and what is being tested.">${esc(s.overview?.summary || '')}</textarea>
         </div>
 
         <div class="form-row-2">
           <div class="form-group">
             <label for="form-targetLearners">Target Learners</label>
-            <input type="text" id="form-targetLearners" required value="${esc(s.overview?.targetLearners || '')}" placeholder="e.g. Final Year Medical Students, FY1s">
+            <input type="text" id="form-targetLearners" value="${esc(s.overview?.targetLearners || '')}" placeholder="e.g. Final Year Medical Students, FY1s">
           </div>
           <div class="form-group">
             <label for="form-prerequisites">Pre-requisites</label>
@@ -1572,22 +1582,22 @@ const components = {
           </div>
           <div class="form-group">
             <label for="form-location">Physical Location</label>
-            <input type="text" id="form-location" required value="${esc(s.overview?.location || '')}" placeholder="e.g. Sim Ward, Bed 2, ED Cubicle">
+            <input type="text" id="form-location" value="${esc(s.overview?.location || '')}" placeholder="e.g. Sim Ward, Bed 2, ED Cubicle">
           </div>
         </div>
 
         <div class="form-row-3">
           <div class="form-group">
             <label for="form-duration">Scenario Run Time (min)</label>
-            <input type="number" id="form-duration" required value="${esc(s.overview?.duration || 15)}">
+            <input type="number" id="form-duration" value="${esc(s.overview?.duration || 15)}">
           </div>
           <div class="form-group">
             <label for="form-debriefDuration">Debrief Run Time (min)</label>
-            <input type="number" id="form-debriefDuration" required value="${esc(s.overview?.debriefDuration || 30)}">
+            <input type="number" id="form-debriefDuration" value="${esc(s.overview?.debriefDuration || 30)}">
           </div>
           <div class="form-group">
             <label for="form-totalSessionTime">Total Session Time (min)</label>
-            <input type="number" id="form-totalSessionTime" required value="${esc(s.overview?.totalSessionTime || 60)}">
+            <input type="number" id="form-totalSessionTime" value="${esc(s.overview?.totalSessionTime || 60)}">
           </div>
         </div>
       </div>
@@ -1621,22 +1631,22 @@ const components = {
         <div class="form-row-3">
           <div class="form-group">
             <label for="form-patName">Patient Name</label>
-            <input type="text" id="form-patName" required value="${esc(s.patientInfo?.demographics?.name || '')}" placeholder="e.g. Sam Phillips">
+            <input type="text" id="form-patName" value="${esc(s.patientInfo?.demographics?.name || '')}" placeholder="e.g. Sam Phillips">
           </div>
           <div class="form-group">
             <label for="form-patAge">Age</label>
-            <input type="text" id="form-patAge" required value="${esc(s.patientInfo?.demographics?.age || '')}" placeholder="e.g. 42 yrs">
+            <input type="text" id="form-patAge" value="${esc(s.patientInfo?.demographics?.age || '')}" placeholder="e.g. 42 yrs">
           </div>
           <div class="form-group">
             <label for="form-patSex">Sex</label>
-            <input type="text" id="form-patSex" required value="${esc(s.patientInfo?.demographics?.sex || '')}" placeholder="e.g. M / F / Unisex">
+            <input type="text" id="form-patSex" value="${esc(s.patientInfo?.demographics?.sex || '')}" placeholder="e.g. M / F / Unisex">
           </div>
         </div>
 
         <div class="form-row-2">
           <div class="form-group">
             <label for="form-patWeight">Weight (kg)</label>
-            <input type="text" id="form-patWeight" required value="${esc(s.patientInfo?.demographics?.weight || '')}" placeholder="e.g. 87 kg">
+            <input type="text" id="form-patWeight" value="${esc(s.patientInfo?.demographics?.weight || '')}" placeholder="e.g. 87 kg">
           </div>
           <div class="form-group">
             <label for="form-patIdentifier">Patient MRN / NHS Number</label>
@@ -1647,11 +1657,11 @@ const components = {
         <h3 style="margin-top:30px; margin-bottom:16px; color:var(--accent-blue);"><i class="fa-solid fa-file-medical"></i> Clinical Background</h3>
         <div class="form-group">
           <label for="form-patPC">Presenting Complaint (Lay Words)</label>
-          <input type="text" id="form-patPC" required value="${esc(s.patientInfo?.background?.presentingComplaint || '')}" placeholder="What the patient complains of...">
+          <input type="text" id="form-patPC" value="${esc(s.patientInfo?.background?.presentingComplaint || '')}" placeholder="What the patient complains of...">
         </div>
         <div class="form-group">
           <label for="form-patHistory">History of Presenting Complaint</label>
-          <textarea id="form-patHistory" rows="3" required placeholder="Detailed clinical timeline...">${esc(s.patientInfo?.background?.history || '')}</textarea>
+          <textarea id="form-patHistory" rows="3" placeholder="Detailed clinical timeline...">${esc(s.patientInfo?.background?.history || '')}</textarea>
         </div>
         <div class="form-group">
           <label for="form-patPMH">Past Medical History</label>
@@ -1663,7 +1673,7 @@ const components = {
         </div>
         <div class="form-group">
           <label for="form-patAllergies">Allergies & Reactions</label>
-          <input type="text" id="form-patAllergies" required value="${esc(s.patientInfo?.background?.allergies || '')}" placeholder="e.g. Penicillin (anaphylaxis)">
+          <input type="text" id="form-patAllergies" value="${esc(s.patientInfo?.background?.allergies || '')}" placeholder="e.g. Penicillin (anaphylaxis)">
         </div>
         <div class="form-group">
           <label for="form-patSocial">Social & Family History</label>
@@ -1711,37 +1721,37 @@ const components = {
         <div class="form-row-2">
           <div class="form-group">
             <label for="form-setup-location">Location / Setting</label>
-            <input type="text" id="form-setup-location" required value="${esc(s.environment?.setup?.location || '')}" placeholder="e.g. Simulation Ward - Bay 2, curtains closed">
+            <input type="text" id="form-setup-location" value="${esc(s.environment?.setup?.location || '')}" placeholder="e.g. Simulation Ward - Bay 2, curtains closed">
           </div>
           <div class="form-group">
             <label for="form-setup-simulator">Simulator Model</label>
-            <input type="text" id="form-setup-simulator" required value="${esc(s.environment?.setup?.simulator || '')}" placeholder="e.g. SimMan 3G / Actor with moulage">
+            <input type="text" id="form-setup-simulator" value="${esc(s.environment?.setup?.simulator || '')}" placeholder="e.g. SimMan 3G / Actor with moulage">
           </div>
         </div>
 
         <div class="form-row-2">
           <div class="form-group">
             <label for="form-setup-position">Patient Position</label>
-            <input type="text" id="form-setup-position" required value="${esc(s.environment?.setup?.position || '')}" placeholder="e.g. Semi-upright in bed, fully clothed">
+            <input type="text" id="form-setup-position" value="${esc(s.environment?.setup?.position || '')}" placeholder="e.g. Semi-upright in bed, fully clothed">
           </div>
           <div class="form-group">
             <label for="form-setup-monitor">Monitor Setup</label>
-            <input type="text" id="form-setup-monitor" required value="${esc(s.environment?.setup?.monitorSetup || '')}" placeholder="e.g. Blank vitals monitor active">
+            <input type="text" id="form-setup-monitor" value="${esc(s.environment?.setup?.monitorSetup || '')}" placeholder="e.g. Blank vitals monitor active">
           </div>
         </div>
 
         <div class="form-row-3">
           <div class="form-group">
             <label for="form-setup-access">Vascular Access</label>
-            <input type="text" id="form-setup-access" required value="${esc(s.environment?.setup?.vascularAccess || '')}" placeholder="e.g. 20G right ACF cannula patent">
+            <input type="text" id="form-setup-access" value="${esc(s.environment?.setup?.vascularAccess || '')}" placeholder="e.g. 20G right ACF cannula patent">
           </div>
           <div class="form-group">
             <label for="form-setup-oxygen">Oxygen at Start</label>
-            <input type="text" id="form-setup-oxygen" required value="${esc(s.environment?.setup?.oxygenAtStart || '')}" placeholder="e.g. 2L/min via nasal cannula">
+            <input type="text" id="form-setup-oxygen" value="${esc(s.environment?.setup?.oxygenAtStart || '')}" placeholder="e.g. 2L/min via nasal cannula">
           </div>
           <div class="form-group">
             <label for="form-setup-fluids">Fluids Running</label>
-            <input type="text" id="form-setup-fluids" required value="${esc(s.environment?.setup?.fluidsRunning || '')}" placeholder="e.g. None / Normal saline running">
+            <input type="text" id="form-setup-fluids" value="${esc(s.environment?.setup?.fluidsRunning || '')}" placeholder="e.g. None / Normal saline running">
           </div>
         </div>
 
@@ -1794,11 +1804,11 @@ const components = {
         <div class="form-row-2">
           <div class="form-group">
             <label for="form-prebrief-lead">Prebrief Lead Facilitator</label>
-            <input type="text" id="form-prebrief-lead" required value="${esc(s.prebrief?.lead || '')}" placeholder="e.g. Lead Facilitator">
+            <input type="text" id="form-prebrief-lead" value="${esc(s.prebrief?.lead || '')}" placeholder="e.g. Lead Facilitator">
           </div>
           <div class="form-group">
             <label for="form-prebrief-duration">Prebrief Duration (min)</label>
-            <input type="number" id="form-prebrief-duration" required value="${esc(s.prebrief?.duration || 10)}">
+            <input type="number" id="form-prebrief-duration" value="${esc(s.prebrief?.duration || 10)}">
           </div>
         </div>
         <div class="form-group">
@@ -1807,29 +1817,29 @@ const components = {
         </div>
         <div class="form-group">
           <label for="form-prebrief-checklist">Safety & Contract Checklist (One item per line)</label>
-          <textarea id="form-prebrief-checklist" rows="5" required placeholder="Introductions and housekeeping&#10;Fiction contract&#10;Basic assumption&#10;Confidentiality&#10;Orientation to simulator">${esc((s.prebrief?.checklist || []).join('\n'))}</textarea>
+          <textarea id="form-prebrief-checklist" rows="5" placeholder="Introductions and housekeeping&#10;Fiction contract&#10;Basic assumption&#10;Confidentiality&#10;Orientation to simulator">${esc((s.prebrief?.checklist || []).join('\n'))}</textarea>
         </div>
 
         <h3 style="margin-top:30px; margin-bottom:16px; color:var(--accent-purple);"><i class="fa-solid fa-comments"></i> PEARLS Debrief Guidance</h3>
         <div class="form-row-2">
           <div class="form-group">
             <label for="form-debrief-reactions">Phase 1 - Reactions Question</label>
-            <input type="text" id="form-debrief-reactions" required value="${esc(s.debrief?.reactions?.question || '')}" placeholder="e.g. How are you feeling?">
+            <input type="text" id="form-debrief-reactions" value="${esc(s.debrief?.reactions?.question || '')}" placeholder="e.g. How are you feeling?">
           </div>
           <div class="form-group">
             <label for="form-debrief-reactions-dur">Reactions Duration (min)</label>
-            <input type="number" id="form-debrief-reactions-dur" required value="${esc(s.debrief?.reactions?.duration || 3)}">
+            <input type="number" id="form-debrief-reactions-dur" value="${esc(s.debrief?.reactions?.duration || 3)}">
           </div>
         </div>
 
         <div class="form-row-2">
           <div class="form-group">
             <label for="form-debrief-desc">Phase 2 - Description Question</label>
-            <input type="text" id="form-debrief-desc" required value="${esc(s.debrief?.description?.question || '')}" placeholder="e.g. Can someone summarise the case?">
+            <input type="text" id="form-debrief-desc" value="${esc(s.debrief?.description?.question || '')}" placeholder="e.g. Can someone summarise the case?">
           </div>
           <div class="form-group">
             <label for="form-debrief-desc-dur">Description Duration (min)</label>
-            <input type="number" id="form-debrief-desc-dur" required value="${esc(s.debrief?.description?.duration || 3)}">
+            <input type="number" id="form-debrief-desc-dur" value="${esc(s.debrief?.description?.duration || 3)}">
           </div>
         </div>
 
@@ -1846,16 +1856,16 @@ const components = {
         <div class="form-row-2" style="margin-top:20px;">
           <div class="form-group">
             <label for="form-debrief-sum">Phase 4 - Summary Closing Prompt</label>
-            <input type="text" id="form-debrief-sum" required value="${esc(s.debrief?.summary?.question || '')}" placeholder="e.g. What are the takeaway points?">
+            <input type="text" id="form-debrief-sum" value="${esc(s.debrief?.summary?.question || '')}" placeholder="e.g. What are the takeaway points?">
           </div>
           <div class="form-group">
             <label for="form-debrief-sum-dur">Summary Duration (min)</label>
-            <input type="number" id="form-debrief-sum-dur" required value="${esc(s.debrief?.summary?.duration || 4)}">
+            <input type="number" id="form-debrief-sum-dur" value="${esc(s.debrief?.summary?.duration || 4)}">
           </div>
         </div>
         <div class="form-group">
           <label for="form-debrief-sum-points">Core Faculty Take-Home Points (One item per line)</label>
-          <textarea id="form-debrief-sum-points" rows="3" required placeholder="Complete A-E check before escalation&#10;LMWH treatment dosing guidelines">${esc((s.debrief?.summary?.points || []).join('\n'))}</textarea>
+          <textarea id="form-debrief-sum-points" rows="3" placeholder="Complete A-E check before escalation&#10;LMWH treatment dosing guidelines">${esc((s.debrief?.summary?.points || []).join('\n'))}</textarea>
         </div>
       </div>
 
@@ -1874,7 +1884,7 @@ const components = {
             'Resources — equipment and environment fit for purpose',
             'Governance — review, sign-off, version control'
           ].map((domain, index) => {
-            const match = s.aspihMapping ? s.aspihMapping.find(m => m.domain.startsWith(domain.substring(0, 15))) : null;
+            const match = s.aspihMapping ? s.aspihMapping.find(m => m.domain === domain) : null;
             return `
               <div class="glass-card" style="padding:14px;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -1884,7 +1894,7 @@ const components = {
                     <span style="font-size:0.8rem; font-weight:600;">Met / Covered</span>
                   </label>
                 </div>
-                <input type="text" class="aspih-desc" data-domain="${esc(domain)}" required value="${esc(match ? match.coveredBy : `Addresses requirements in relevant scenario protocols.`)}" style="font-size:0.85rem; padding:6px 12px;">
+                <input type="text" class="aspih-desc" data-domain="${esc(domain)}" value="${esc(match ? match.coveredBy : `Addresses requirements in relevant scenario protocols.`)}" style="font-size:0.85rem; padding:6px 12px;">
               </div>
             `;
           }).join('')}
@@ -2660,12 +2670,17 @@ const components = {
   // --- 6. INTERACTIVE PEARLS DEBRIEF PLAN VIEWER ---
   
   transitionToDebrief() {
+    // The debrief needs a full scenario from an active run; catalog summary
+    // objects lack debrief/progression data and would render a broken view.
+    if (!this.runState.scenario) {
+      app.showToast('Run a scenario first to open its debrief guide.', 'error');
+      return;
+    }
+
     this.pauseTimer(); // Stop scenario run timer
-    
-    // runState.scenario is already escaped (see startRunHUD); the summary
-    // fallback is raw, so escape just that branch to keep display XSS-safe
-    // without double-escaping.
-    const s = this.runState.scenario || deepEscape(this.allScenarios[0]);
+
+    // runState.scenario is already escaped (see startRunHUD).
+    const s = this.runState.scenario;
     this.debriefState.scenario = s;
     this.debriefState.currentStep = 'reactions';
     this.debriefState.elapsedSeconds = 0;
@@ -2928,10 +2943,10 @@ const components = {
               </div>
               
               <div class="scenario-actions">
-                <button class="btn btn-secondary" onclick="components.openUserModal('${esc(u.email)}')" style="flex: 1; padding: 8px;">
+                <button class="btn btn-secondary" data-action="edit-user" data-email="${esc(u.email)}" style="flex: 1; padding: 8px;">
                   <i class="fa-solid fa-pen-to-square"></i> Edit
                 </button>
-                <button class="btn btn-danger" onclick="components.deleteUser('${esc(u.email)}')" ${isSelf ? 'disabled' : ''} style="padding: 8px 12px;" title="${isSelf ? 'You cannot delete yourself.' : ''}">
+                <button class="btn btn-danger" data-action="delete-user" data-email="${esc(u.email)}" ${isSelf ? 'disabled' : ''} style="padding: 8px 12px;" title="${isSelf ? 'You cannot delete yourself.' : ''}">
                   <i class="fa-solid fa-trash"></i>
                 </button>
               </div>
@@ -2939,6 +2954,14 @@ const components = {
           </div>
         `;
       }).join('');
+
+      // Bind via data attributes + listeners: emails are user-authored, and
+      // interpolating them into inline onclick JS strings is XSS-prone (HTML
+      // entity escaping is undone by the parser before the JS engine runs).
+      grid.querySelectorAll('[data-action="edit-user"]').forEach(btn =>
+        btn.addEventListener('click', () => this.openUserModal(btn.dataset.email)));
+      grid.querySelectorAll('[data-action="delete-user"]').forEach(btn =>
+        btn.addEventListener('click', () => this.deleteUser(btn.dataset.email)));
 
     } catch (err) {
       app.showToast('Failed to load users: ' + err.message, 'error');
@@ -2973,10 +2996,10 @@ const components = {
         </button>
       </div>
 
-      <form id="user-modal-form" onsubmit="components.saveUser(event, ${existing ? `'${existing.email}'` : 'null'})">
+      <form id="user-modal-form">
         <div class="form-group">
           <label for="user-email">Faculty Email Address</label>
-          <input type="text" id="user-email" required value="${existing ? esc(existing.email) : ''}" ${existing ? 'disabled' : ''} placeholder="e.g. nurse.smith@simhub.local">
+          <input type="email" id="user-email" required value="${existing ? esc(existing.email) : ''}" ${existing ? 'disabled' : ''} placeholder="e.g. nurse.smith@simhub.local">
         </div>
         <div class="form-group">
           <label for="user-name">Full Name</label>
@@ -3003,6 +3026,11 @@ const components = {
         </div>
       </form>
     `;
+
+    // Bind via listener so the email is passed as a real JS value instead of
+    // being interpolated into inline handler markup (stored-XSS vector).
+    document.getElementById('user-modal-form')
+      .addEventListener('submit', (e) => this.saveUser(e, existing ? existing.email : null));
 
     modal.style.display = 'flex';
   },

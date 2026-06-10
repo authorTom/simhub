@@ -8,9 +8,26 @@ const PORT = process.env.PORT || 3000;
 
 // --- Security helpers ---
 
+// Promisified scrypt so password checks never block the event loop.
+function scryptAsync(plain, salt) {
+  return new Promise((resolve, reject) => {
+    crypto.scrypt(String(plain), salt, 64, (err, derived) => {
+      if (err) reject(err); else resolve(derived);
+    });
+  });
+}
+
 // Hash a plaintext password using scrypt with a per-user random salt.
 // Format: scrypt$<saltHex>$<hashHex>
-function hashPassword(plain) {
+async function hashPassword(plain) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derived = (await scryptAsync(plain, salt)).toString('hex');
+  return `scrypt$${salt}$${derived}`;
+}
+
+// Synchronous variant used only at startup (defaults + legacy migration),
+// where blocking is harmless and async plumbing would complicate boot.
+function hashPasswordSync(plain) {
   const salt = crypto.randomBytes(16).toString('hex');
   const derived = crypto.scryptSync(String(plain), salt, 64).toString('hex');
   return `scrypt$${salt}$${derived}`;
@@ -22,19 +39,30 @@ function isHashed(stored) {
 
 // Constant-time password verification. Transparently supports legacy
 // plaintext records (pre-migration) so existing accounts keep working.
-function verifyPassword(plain, stored) {
+async function verifyPassword(plain, stored) {
   if (typeof stored !== 'string') return false;
   if (!isHashed(stored)) {
     return stored === plain;
   }
   const [, salt, hash] = stored.split('$');
   if (!salt || !hash) return false;
-  const derived = crypto.scryptSync(String(plain), salt, 64).toString('hex');
+  const derived = (await scryptAsync(plain, salt)).toString('hex');
   const hashBuf = Buffer.from(hash, 'hex');
   const derivedBuf = Buffer.from(derived, 'hex');
   if (hashBuf.length !== derivedBuf.length) return false;
   return crypto.timingSafeEqual(hashBuf, derivedBuf);
 }
+
+// Hash verified for unknown accounts so login latency does not reveal
+// whether an email exists (timing-based account enumeration).
+const DUMMY_HASH = hashPasswordSync(crypto.randomBytes(16).toString('hex'));
+
+const EMAIL_RE = /^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,24}$/;
+function isValidEmail(email) {
+  return typeof email === 'string' && EMAIL_RE.test(email);
+}
+
+const VALID_ROLES = ['Admin', 'Read-Only'];
 
 // Restrict identifiers used to build filesystem paths to a safe charset.
 // Prevents path traversal (e.g. "../../server") via client-supplied ids.
@@ -62,19 +90,97 @@ const RECYCLE_BIN_DIR = path.join(DATA_DIR, 'recycle_bin');
 });
 
 // Middleware
-app.use(express.json({ limit: '50mb' }));
+
+// Baseline security headers on every response.
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  next();
+});
+
+// Bulk backup imports legitimately carry large payloads; everything else
+// gets a much smaller body limit.
+const jsonDefault = express.json({ limit: '2mb' });
+const jsonLarge = express.json({ limit: '50mb' });
+app.use((req, res, next) => {
+  (req.path === '/api/backup/import' ? jsonLarge : jsonDefault)(req, res, next);
+});
 app.use(express.static(path.join(__dirname, 'public')));
 
 // Simple Token-based Auth System
-const SESSIONS = new Map(); // token -> user details
+const SESSIONS = new Map(); // token -> { user, expiresAt }
+const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours, refreshed on activity
 
-let USERS = {};
+function createSession(user) {
+  const token = crypto.randomBytes(32).toString('hex');
+  SESSIONS.set(token, {
+    user: { email: user.email, role: user.role, name: user.name },
+    expiresAt: Date.now() + SESSION_TTL_MS
+  });
+  return token;
+}
+
+// Drop every live session belonging to an email (account deleted).
+function revokeSessionsFor(email) {
+  for (const [token, session] of SESSIONS) {
+    if (session.user.email.toLowerCase() === email) SESSIONS.delete(token);
+  }
+}
+
+// Propagate name/role changes into live sessions so a demoted account
+// loses admin rights immediately rather than at next login.
+function updateSessionsFor(email, fields) {
+  for (const session of SESSIONS.values()) {
+    if (session.user.email.toLowerCase() === email) Object.assign(session.user, fields);
+  }
+}
+
+// In-memory login throttle: after too many failures for an IP+email pair
+// within the window, reject further attempts until the window expires.
+const LOGIN_ATTEMPTS = new Map(); // key -> { count, windowStart }
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 10;
+
+function loginThrottleKey(req, email) {
+  return `${req.ip}|${String(email).toLowerCase()}`;
+}
+
+function isLoginThrottled(key) {
+  const entry = LOGIN_ATTEMPTS.get(key);
+  if (!entry) return false;
+  if (Date.now() - entry.windowStart > LOGIN_WINDOW_MS) {
+    LOGIN_ATTEMPTS.delete(key);
+    return false;
+  }
+  return entry.count >= LOGIN_MAX_FAILURES;
+}
+
+function recordLoginFailure(key) {
+  const now = Date.now();
+  const entry = LOGIN_ATTEMPTS.get(key);
+  if (!entry || now - entry.windowStart > LOGIN_WINDOW_MS) {
+    LOGIN_ATTEMPTS.set(key, { count: 1, windowStart: now });
+  } else {
+    entry.count++;
+  }
+  // Lazy cleanup so the map cannot grow unbounded.
+  if (LOGIN_ATTEMPTS.size > 10000) {
+    for (const [k, e] of LOGIN_ATTEMPTS) {
+      if (now - e.windowStart > LOGIN_WINDOW_MS) LOGIN_ATTEMPTS.delete(k);
+    }
+  }
+}
+
+// Null-prototype store so emails can never collide with Object.prototype
+// properties ("constructor", "__proto__", ...).
+let USERS = Object.create(null);
 const USERS_FILE = path.join(DATA_DIR, 'users.json');
 
 // Default credentials are defined in plaintext for readability but are
 // hashed before they ever touch disk or memory.
 function buildDefaultUsers() {
-  const defaults = {
+  const defaults = Object.assign(Object.create(null), {
     'admin@simhub.local': {
       email: 'admin@simhub.local',
       password: 'admin123',
@@ -87,15 +193,15 @@ function buildDefaultUsers() {
       role: 'Read-Only',
       name: 'Clinical Faculty'
     }
-  };
-  Object.values(defaults).forEach(u => { u.password = hashPassword(u.password); });
+  });
+  Object.values(defaults).forEach(u => { u.password = hashPasswordSync(u.password); });
   return defaults;
 }
 
 function loadUsers() {
   if (fs.existsSync(USERS_FILE)) {
     try {
-      USERS = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+      USERS = Object.assign(Object.create(null), JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')));
     } catch (e) {
       console.error('Error reading users file, resetting to default:', e);
       USERS = buildDefaultUsers();
@@ -107,7 +213,7 @@ function loadUsers() {
     let migrated = false;
     Object.values(USERS).forEach(u => {
       if (!isHashed(u.password)) {
-        u.password = hashPassword(u.password);
+        u.password = hashPasswordSync(u.password);
         migrated = true;
       }
     });
@@ -135,11 +241,16 @@ function authenticate(req, res, next) {
     return res.status(401).json({ error: 'Unauthorized. No token provided.' });
   }
   const token = authHeader.split(' ')[1];
-  const user = SESSIONS.get(token);
-  if (!user) {
+  const session = SESSIONS.get(token);
+  if (!session) {
     return res.status(401).json({ error: 'Unauthorized. Invalid or expired token.' });
   }
-  req.user = user;
+  if (Date.now() > session.expiresAt) {
+    SESSIONS.delete(token);
+    return res.status(401).json({ error: 'Unauthorized. Invalid or expired token.' });
+  }
+  session.expiresAt = Date.now() + SESSION_TTL_MS; // sliding expiry
+  req.user = session.user;
   next();
 }
 
@@ -153,34 +264,42 @@ function requireAdmin(req, res, next) {
 
 // --- AUTH ENDPOINTS ---
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
-  
+
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required.' });
   }
 
-  const user = USERS[email.toLowerCase()];
-  if (!user || !verifyPassword(password, user.password)) {
-    return res.status(401).json({ error: 'Invalid email or password.' });
+  const throttleKey = loginThrottleKey(req, email);
+  if (isLoginThrottled(throttleKey)) {
+    return res.status(429).json({ error: 'Too many failed login attempts. Please try again later.' });
   }
 
-  // Generate a simple token
-  const token = `token_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-  SESSIONS.set(token, {
-    email: user.email,
-    role: user.role,
-    name: user.name
-  });
-
-  res.json({
-    token,
-    user: {
-      email: user.email,
-      role: user.role,
-      name: user.name
+  try {
+    const user = USERS[String(email).toLowerCase()];
+    // Always perform one hash verification so response timing does not
+    // reveal whether the account exists.
+    const ok = await verifyPassword(password, user ? user.password : DUMMY_HASH);
+    if (!user || !ok) {
+      recordLoginFailure(throttleKey);
+      return res.status(401).json({ error: 'Invalid email or password.' });
     }
-  });
+
+    LOGIN_ATTEMPTS.delete(throttleKey);
+    const token = createSession(user);
+
+    res.json({
+      token,
+      user: {
+        email: user.email,
+        role: user.role,
+        name: user.name
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Login failed unexpectedly.' });
+  }
 });
 
 app.post('/api/logout', authenticate, (req, res) => {
@@ -261,6 +380,11 @@ app.post('/api/scenarios', authenticate, requireAdmin, (req, res) => {
   }
 
   const filePath = path.join(SCENARIOS_DIR, `${scenario.id}.json`);
+
+  // Creation must never clobber an existing scenario; updates go via PUT.
+  if (fs.existsSync(filePath)) {
+    return res.status(409).json({ error: 'A scenario with this id already exists.' });
+  }
 
   try {
     fs.writeFileSync(filePath, JSON.stringify(scenario, null, 2), 'utf8');
@@ -431,23 +555,34 @@ app.get('/api/users', authenticate, requireAdmin, (req, res) => {
   }
 });
 
+// Count of Admin accounts currently on record.
+function adminCount() {
+  return Object.values(USERS).filter(u => u.role === 'Admin').length;
+}
+
 // Create new user
-app.post('/api/users', authenticate, requireAdmin, (req, res) => {
+app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
   const { email, password, role, name } = req.body;
   if (!email || !password || !role || !name) {
     return res.status(400).json({ error: 'All fields (email, password, role, name) are required.' });
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = String(email).toLowerCase().trim();
+  if (!isValidEmail(normalizedEmail)) {
+    return res.status(400).json({ error: 'Invalid email address format.' });
+  }
+  if (!VALID_ROLES.includes(role)) {
+    return res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}.` });
+  }
   if (USERS[normalizedEmail]) {
     return res.status(400).json({ error: 'A user with this email already exists.' });
   }
 
   USERS[normalizedEmail] = {
     email: normalizedEmail,
-    password: hashPassword(password),
+    password: await hashPassword(password),
     role,
-    name
+    name: String(name)
   };
 
   try {
@@ -459,7 +594,7 @@ app.post('/api/users', authenticate, requireAdmin, (req, res) => {
 });
 
 // Update user details
-app.put('/api/users/:email', authenticate, requireAdmin, (req, res) => {
+app.put('/api/users/:email', authenticate, requireAdmin, async (req, res) => {
   const targetEmail = req.params.email.toLowerCase().trim();
   const { password, role, name } = req.body;
 
@@ -471,19 +606,29 @@ app.put('/api/users/:email', authenticate, requireAdmin, (req, res) => {
   if (!role || !name) {
     return res.status(400).json({ error: 'Role and name are required.' });
   }
+  if (!VALID_ROLES.includes(role)) {
+    return res.status(400).json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}.` });
+  }
 
   if (targetEmail === req.user.email.toLowerCase() && role !== 'Admin') {
     return res.status(400).json({ error: 'Demotion prevented. You cannot change your own role from Admin.' });
   }
 
-  USERS[targetEmail].name = name;
+  // Never allow the last Admin account to be demoted.
+  if (USERS[targetEmail].role === 'Admin' && role !== 'Admin' && adminCount() <= 1) {
+    return res.status(400).json({ error: 'Demotion prevented. At least one Admin account must remain.' });
+  }
+
+  USERS[targetEmail].name = String(name);
   USERS[targetEmail].role = role;
   if (password) {
-    USERS[targetEmail].password = hashPassword(password);
+    USERS[targetEmail].password = await hashPassword(password);
   }
 
   try {
     saveUsers();
+    // Live sessions must reflect the change immediately (e.g. demotion).
+    updateSessionsFor(targetEmail, { name: USERS[targetEmail].name, role });
     res.json(publicUser(USERS[targetEmail]));
   } catch (err) {
     res.status(500).json({ error: 'Failed to update user: ' + err.message });
@@ -502,10 +647,16 @@ app.delete('/api/users/:email', authenticate, requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Self-deletion prevented. You cannot delete your own active account.' });
   }
 
+  // Never allow the last Admin account to be deleted.
+  if (USERS[targetEmail].role === 'Admin' && adminCount() <= 1) {
+    return res.status(400).json({ error: 'Deletion prevented. At least one Admin account must remain.' });
+  }
+
   delete USERS[targetEmail];
 
   try {
     saveUsers();
+    revokeSessionsFor(targetEmail);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete user: ' + err.message });
@@ -646,8 +797,12 @@ app.post('/api/backup/import', authenticate, requireAdmin, (req, res) => {
 });
 
 
-// Serve Single Page Application for any unmatched route
+// Serve Single Page Application for any unmatched route.
+// Unknown API paths must return a JSON 404, not the SPA shell.
 app.get('*', (req, res) => {
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({ error: 'API endpoint not found.' });
+  }
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
