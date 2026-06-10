@@ -30,7 +30,9 @@
   },
   "homepage": "https://github.com/yourusername/simhub#readme",
   "dependencies": {
-    "express": "^4.19.2",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
     "puppeteer-core": "^25.1.0"
   }
 }
