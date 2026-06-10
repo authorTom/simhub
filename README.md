@@ -167,6 +167,13 @@ We welcome contributions to make clinical simulation more structured and accessi
 
 ## 📝 Change Log
 
+### [2026-06-10] - User Administration Upgrade
+*   **Management Table**: The user-card grid is now a proper management table with live search, a role filter, an account count, and per-row edit/delete actions.
+*   **Bulk Operations**: Select accounts via checkboxes (header checkbox selects all visible) and apply bulk role changes or bulk deletion from an action bar. New Admin-only `POST /api/users/bulk` endpoint validates the entire batch server-side — your own account is skipped, and a batch can never remove or demote the last Admin.
+*   **Bulk Add**: Paste `email, name, role` lines (role optional, defaults to Read-Only) to create many accounts at once via `POST /api/users/bulk-create`. Secure temporary passwords are generated server-side, shown exactly once, and downloadable as a credentials CSV; invalid rows are reported with per-row reasons.
+*   **Password Generator**: The add/edit user modal gains a one-click strong password generator that copies to the clipboard.
+*   **CSV Export**: Download the account list (email, name, role — never credentials) as CSV.
+
 ### [2026-06-10] - Premium UI Overhaul
 *   **Confirmation Dialogs**: Replaced every native browser `confirm()` with a styled in-app dialog (`app.confirm()`) featuring a blurred backdrop, scale-in animation, danger styling for destructive actions, Escape/backdrop-click dismissal, and safe text injection.
 *   **Toast System**: Toasts now stack, slide in/out with animation, and carry an auto-dismiss progress bar; rapid successive messages no longer clobber each other.
