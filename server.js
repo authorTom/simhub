@@ -73,7 +73,7 @@ function isValidId(id) {
 
 // Strip the password field before sending a user object to the client.
 function publicUser(u) {
-  return { email: u.email, name: u.name, role: u.role };
+  return { email: u.email, name: u.name, role: u.role, disabled: !!u.disabled };
 }
 
 // Directories for persistence
@@ -284,6 +284,12 @@ app.post('/api/login', async (req, res) => {
     if (!user || !ok) {
       recordLoginFailure(throttleKey);
       return res.status(401).json({ error: 'Invalid email or password.' });
+    }
+
+    // Checked only after the password verifies so the disabled state is
+    // never revealed to someone who does not hold valid credentials.
+    if (user.disabled) {
+      return res.status(403).json({ error: 'This account has been disabled. Contact an administrator.' });
     }
 
     LOGIN_ATTEMPTS.delete(throttleKey);
@@ -556,9 +562,10 @@ app.get('/api/users', authenticate, requireAdmin, (req, res) => {
   }
 });
 
-// Count of Admin accounts currently on record.
-function adminCount() {
-  return Object.values(USERS).filter(u => u.role === 'Admin').length;
+// Count of Admin accounts that can actually sign in. Disabled admins do
+// not count towards the "at least one Admin must remain" guards.
+function activeAdminCount() {
+  return Object.values(USERS).filter(u => u.role === 'Admin' && !u.disabled).length;
 }
 
 // Create new user
@@ -615,8 +622,9 @@ app.put('/api/users/:email', authenticate, requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'Demotion prevented. You cannot change your own role from Admin.' });
   }
 
-  // Never allow the last Admin account to be demoted.
-  if (USERS[targetEmail].role === 'Admin' && role !== 'Admin' && adminCount() <= 1) {
+  // Never allow the last active Admin account to be demoted.
+  if (USERS[targetEmail].role === 'Admin' && !USERS[targetEmail].disabled &&
+      role !== 'Admin' && activeAdminCount() <= 1) {
     return res.status(400).json({ error: 'Demotion prevented. At least one Admin account must remain.' });
   }
 
@@ -648,8 +656,8 @@ app.delete('/api/users/:email', authenticate, requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Self-deletion prevented. You cannot delete your own active account.' });
   }
 
-  // Never allow the last Admin account to be deleted.
-  if (USERS[targetEmail].role === 'Admin' && adminCount() <= 1) {
+  // Never allow the last active Admin account to be deleted.
+  if (USERS[targetEmail].role === 'Admin' && !USERS[targetEmail].disabled && activeAdminCount() <= 1) {
     return res.status(400).json({ error: 'Deletion prevented. At least one Admin account must remain.' });
   }
 
@@ -675,15 +683,16 @@ function generateTempPassword() {
 
 const BULK_LIMIT = 200;
 
-// Bulk operations on existing users: set-role or delete.
+// Bulk operations on existing users: set-role, delete, disable or enable.
 // The whole batch is validated against the same guards as single-user
-// operations (no self role-change/deletion, at least one Admin remains)
-// before anything is written.
+// operations (no self role-change/deletion/disable, at least one active
+// Admin remains) before anything is written.
+const BULK_ACTIONS = ['set-role', 'delete', 'disable', 'enable'];
 app.post('/api/users/bulk', authenticate, requireAdmin, (req, res) => {
   const { action, emails, role } = req.body;
 
-  if (!['set-role', 'delete'].includes(action)) {
-    return res.status(400).json({ error: 'Invalid action. Must be "set-role" or "delete".' });
+  if (!BULK_ACTIONS.includes(action)) {
+    return res.status(400).json({ error: `Invalid action. Must be one of: ${BULK_ACTIONS.join(', ')}.` });
   }
   if (!Array.isArray(emails) || emails.length === 0 || emails.length > BULK_LIMIT) {
     return res.status(400).json({ error: `Provide between 1 and ${BULK_LIMIT} emails.` });
@@ -696,12 +705,18 @@ app.post('/api/users/bulk', authenticate, requireAdmin, (req, res) => {
   const targets = [];
   const skipped = [];
 
+  const SELF_SKIP_REASONS = {
+    'delete': 'You cannot delete your own account.',
+    'set-role': 'You cannot change your own role.',
+    'disable': 'You cannot disable your own account.'
+  };
+
   for (const raw of emails) {
     const email = String(raw).toLowerCase().trim();
     if (!USERS[email]) {
       skipped.push({ email, reason: 'User not found.' });
-    } else if (email === selfEmail) {
-      skipped.push({ email, reason: action === 'delete' ? 'You cannot delete your own account.' : 'You cannot change your own role.' });
+    } else if (email === selfEmail && SELF_SKIP_REASONS[action]) {
+      skipped.push({ email, reason: SELF_SKIP_REASONS[action] });
     } else if (targets.includes(email)) {
       skipped.push({ email, reason: 'Duplicate entry.' });
     } else {
@@ -709,14 +724,15 @@ app.post('/api/users/bulk', authenticate, requireAdmin, (req, res) => {
     }
   }
 
-  // Guard: simulate the batch and require at least one Admin afterwards.
+  // Guard: simulate the batch and require at least one active Admin after.
   const adminsAfter = Object.values(USERS).filter(u => {
     const email = u.email.toLowerCase();
     if (targets.includes(email)) {
-      if (action === 'delete') return false;
-      return role === 'Admin';
+      if (action === 'delete' || action === 'disable') return false;
+      if (action === 'enable') return u.role === 'Admin';
+      return role === 'Admin' && !u.disabled;
     }
-    return u.role === 'Admin';
+    return u.role === 'Admin' && !u.disabled;
   }).length;
   if (targets.length > 0 && adminsAfter < 1) {
     return res.status(400).json({ error: 'Operation prevented. At least one Admin account must remain.' });
@@ -727,6 +743,11 @@ app.post('/api/users/bulk', authenticate, requireAdmin, (req, res) => {
       if (action === 'delete') {
         delete USERS[email];
         revokeSessionsFor(email);
+      } else if (action === 'disable') {
+        USERS[email].disabled = true;
+        revokeSessionsFor(email);
+      } else if (action === 'enable') {
+        delete USERS[email].disabled;
       } else {
         USERS[email].role = role;
         updateSessionsFor(email, { role });

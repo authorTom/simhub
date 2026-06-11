@@ -3156,7 +3156,7 @@ const components = {
       const checked = state.selected.has(u.email);
       const roleBadgeClass = u.role === 'Admin' ? 'badge badge-admin' : 'badge badge-readonly';
       return `
-        <tr class="${checked ? 'row-selected' : ''}">
+        <tr class="${checked ? 'row-selected' : ''}${u.disabled ? ' row-disabled' : ''}">
           <td>
             <input type="checkbox" class="user-row-cb" data-email="${esc(u.email)}"
               ${checked ? 'checked' : ''} ${isSelf ? 'disabled title="Your own account cannot be bulk-edited."' : ''}>
@@ -3165,6 +3165,7 @@ const components = {
             <div style="display:flex; align-items:center; gap:10px;">
               <span class="user-avatar">${esc((u.name || '?').charAt(0).toUpperCase())}</span>
               <span style="font-weight:500;">${esc(u.name)}${isSelf ? ' <span style="font-size:0.75rem; color:var(--text-muted); font-weight:normal;">(You)</span>' : ''}</span>
+              ${u.disabled ? '<span class="badge badge-disabled" title="This account cannot sign in until re-enabled."><i class="fa-solid fa-user-slash"></i> Disabled</span>' : ''}
             </div>
           </td>
           <td class="mono">${esc(u.email)}</td>
@@ -3244,6 +3245,30 @@ const components = {
     }
   },
 
+  async bulkSetDisabled(disabled) {
+    const emails = Array.from(this.adminUsersState.selected);
+    if (emails.length === 0) return;
+
+    const noun = `${emails.length} account${emails.length === 1 ? '' : 's'}`;
+    const ok = await app.confirm({
+      title: `${disabled ? 'Disable' : 'Enable'} ${noun}?`,
+      message: disabled
+        ? 'Disabled accounts cannot sign in and their active sessions are revoked immediately. Accounts can be re-enabled at any time.'
+        : `The selected account${emails.length === 1 ? '' : 's'} will be able to sign in again.`,
+      confirmText: disabled ? 'Disable Accounts' : 'Enable Accounts',
+      danger: disabled
+    });
+    if (!ok) return;
+
+    try {
+      const result = await api.bulkUserAction(disabled ? 'disable' : 'enable', emails);
+      this.reportBulkOutcome(result, disabled ? 'disabled' : 'enabled');
+      this.renderAdminUsersView();
+    } catch (err) {
+      app.showToast(err.message, 'error');
+    }
+  },
+
   async bulkDeleteUsers() {
     const emails = Array.from(this.adminUsersState.selected);
     if (emails.length === 0) return;
@@ -3281,7 +3306,7 @@ const components = {
       return;
     }
     const quote = v => `"${String(v).replace(/"/g, '""')}"`;
-    const csv = ['email,name,role', ...users.map(u => [u.email, u.name, u.role].map(quote).join(','))].join('\r\n');
+    const csv = ['email,name,role,status', ...users.map(u => [u.email, u.name, u.role, u.disabled ? 'Disabled' : 'Active'].map(quote).join(','))].join('\r\n');
     this.downloadFile(csv, `simhub_users_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv');
     app.showToast('User list exported.', 'success');
   },

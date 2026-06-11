@@ -320,6 +320,20 @@ header {
   color: var(--text-secondary);
 }
 
+.badge-disabled {
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--accent-amber);
+}
+
+/* Suspended accounts stay visible but recede; badges keep their own colour */
+.data-table tr.row-disabled td {
+  color: var(--text-muted);
+}
+
+.data-table tr.row-disabled .user-avatar {
+  opacity: 0.55;
+}
+
 /* Content Layout */
 main {
   padding: 30px 40px;
