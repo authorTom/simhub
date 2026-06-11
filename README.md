@@ -167,6 +167,12 @@ We welcome contributions to make clinical simulation more structured and accessi
 
 ## 📝 Change Log
 
+### [2026-06-11] - Account Disable / Suspend
+*   **Reversible Suspension**: Accounts can now be disabled instead of deleted (rotating faculty, leave of absence). Disabled accounts cannot sign in — the check runs only after password verification so the flag is not enumerable — and their live sessions are revoked immediately. Re-enabling restores access with no data loss.
+*   **Bulk Disable/Enable**: New `disable`/`enable` actions on `POST /api/users/bulk` with the same server-side batch guards as delete/set-role: your own account is skipped, and a batch can never leave the system without an active Admin.
+*   **Last-Admin Guard Fix**: The "at least one Admin must remain" guards now count only admins who can actually sign in, so a disabled Admin can still be demoted or deleted safely.
+*   **UI**: Amber "Disabled" badge with dimmed row styling in the user management table, Disable/Enable buttons in the bulk action bar behind confirmation dialogs, and an Active/Disabled status column in the CSV export.
+
 ### [2026-06-10] - User Administration Upgrade
 *   **Management Table**: The user-card grid is now a proper management table with live search, a role filter, an account count, and per-row edit/delete actions.
 *   **Bulk Operations**: Select accounts via checkboxes (header checkbox selects all visible) and apply bulk role changes or bulk deletion from an action bar. New Admin-only `POST /api/users/bulk` endpoint validates the entire batch server-side — your own account is skipped, and a batch can never remove or demote the last Admin.
