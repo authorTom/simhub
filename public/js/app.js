@@ -109,11 +109,8 @@ const app = {
     
     const badge = document.getElementById('user-display-badge');
     badge.innerText = user.role;
-    if (user.role === 'Admin') {
-      badge.className = 'badge badge-admin';
-    } else {
-      badge.className = 'badge badge-readonly';
-    }
+    badge.className = user.role === 'Admin' ? 'badge badge-admin'
+      : user.role === 'Editor' ? 'badge badge-editor' : 'badge badge-readonly';
 
     // Apply role-based visibility restrictions across DOM
     this.applyRoleRestrictions();
@@ -164,10 +161,14 @@ const app = {
       sidebarAdmin.style.display = isAdmin ? 'block' : 'none';
     }
 
-    // New scenario navbar nav-button
+    // New scenario navbar nav-button — also available to Editors who hold at
+    // least one programme allocation (the .admin-only loop above hid/disabled
+    // it for non-admins, so re-enable it here when appropriate).
     const newScenarioNav = document.getElementById('nav-btn-new-scenario');
     if (newScenarioNav) {
-      newScenarioNav.style.display = isAdmin ? 'flex' : 'none';
+      const canCreate = api.canCreateScenarios();
+      newScenarioNav.style.display = canCreate ? 'flex' : 'none';
+      if (canCreate) newScenarioNav.removeAttribute('disabled');
     }
 
     // Admin users navbar nav-button

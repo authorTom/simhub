@@ -167,6 +167,12 @@ We welcome contributions to make clinical simulation more structured and accessi
 
 ## 📝 Change Log
 
+### [2026-06-19] - Programme-Scoped Editor Role
+*   **New Middle Tier**: Added an **Editor** role between Admin and Read-Only. Editors can create, edit, and delete scenarios **only within the programmes they are allocated to**, and remain read-only everywhere else. Admins keep full access; Read-Only is unchanged.
+*   **Server-Side Enforcement**: Authorisation is enforced on the API, not just hidden in the UI. Scenario `PUT`/`DELETE` require the scenario to belong to one of the Editor's allocated programmes; `POST` requires the new scenario to be attached to an allocated programme (it's added to that programme automatically). Allocations are read live so changes take effect immediately, and the last-admin guards are unaffected.
+*   **Allocation Management (Admins only)**: The user create/edit modal gains an *Editor* option and an **Allocated Programmes** checklist; allocations are validated against existing programmes server-side. Programme creation and scenario-to-programme membership remain Admin-only.
+*   **UI**: Violet *Editor* badge (with allocated-programme count) in the user table and header, an *Editor* option in the role filter and bulk role actions, per-scenario Edit/Delete buttons that appear only when the current user may edit that scenario, the *New Scenario* action enabled for Editors, and a required **Programme** selector when an Editor creates a scenario. `programmeIds` is exposed via the users API and login/session.
+
 ### [2026-06-19] - Account Activity Columns
 *   **Created & Last Login**: The user administration table now shows when each account was created and when it last signed in, making stale accounts easy to spot and prune. `createdAt` is stamped on user creation (single and bulk) and `lastLogin` is recorded on every successful login (best-effort persistence that never blocks sign-in); both are exposed via the users API and included in the CSV export.
 *   **Stale Highlighting**: Accounts that have never logged in, or whose last login is older than 90 days, are flagged with an amber cue. Last-login is shown in friendly relative terms ("Today", "3 days ago") with the full timestamp on hover.

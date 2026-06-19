@@ -189,6 +189,7 @@
             <select id="user-role-filter" class="toolbar-select" onchange="components.filterUsers()">
               <option value="all">All roles</option>
               <option value="Admin">Admin</option>
+              <option value="Editor">Editor</option>
               <option value="Read-Only">Read-Only</option>
             </select>
             <span class="results-count" id="user-results-count" style="margin-left: auto; margin-top: 0;"></span>
@@ -199,6 +200,7 @@
             <div style="display: flex; gap: 8px; align-items: center;">
               <select id="bulk-role-select" class="toolbar-select">
                 <option value="Read-Only">Read-Only</option>
+                <option value="Editor">Editor</option>
                 <option value="Admin">Admin</option>
               </select>
               <button class="btn btn-secondary" onclick="components.bulkSetRole()" style="padding: 7px 14px; font-size: 0.85rem;">
@@ -291,10 +293,13 @@
             <button class="btn btn-primary" id="btn-run-scenario-hud" style="padding: 10px 24px;">
               <i class="fa-solid fa-play"></i> Run Simulator HUD
             </button>
-            <button class="btn btn-emerald admin-only" id="btn-edit-scenario" style="display: none;">
+            <!-- Visibility is owned per-scenario by viewScenarioDetail (Admins
+                 always; Editors only for scenarios in their programmes), not the
+                 blanket admin-only sweep, so they aren't class="admin-only". -->
+            <button class="btn btn-emerald" id="btn-edit-scenario" style="display: none;">
               <i class="fa-solid fa-pen-to-square"></i> Edit Scenario
             </button>
-            <button class="btn btn-danger admin-only" id="btn-delete-scenario" style="display: none;">
+            <button class="btn btn-danger" id="btn-delete-scenario" style="display: none;">
               <i class="fa-solid fa-trash"></i> Delete
             </button>
           </div>
