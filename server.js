@@ -62,7 +62,10 @@ function isValidEmail(email) {
   return typeof email === 'string' && EMAIL_RE.test(email);
 }
 
-const VALID_ROLES = ['Admin', 'Read-Only'];
+// Admin: full access. Editor: a programme-scoped middle tier that can
+// create/edit/delete scenarios within its allocated programmes only.
+// Read-Only: view everything, change nothing.
+const VALID_ROLES = ['Admin', 'Editor', 'Read-Only'];
 
 // Restrict identifiers used to build filesystem paths to a safe charset.
 // Prevents path traversal (e.g. "../../server") via client-supplied ids.
@@ -81,7 +84,9 @@ function publicUser(u) {
     role: u.role,
     disabled: !!u.disabled,
     createdAt: u.createdAt || null,
-    lastLogin: u.lastLogin || null
+    lastLogin: u.lastLogin || null,
+    // Programmes an Editor may edit scenarios within; empty for other roles.
+    programmeIds: Array.isArray(u.programmeIds) ? u.programmeIds : []
   };
 }
 
@@ -124,7 +129,12 @@ const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours, refreshed on activity
 function createSession(user) {
   const token = crypto.randomBytes(32).toString('hex');
   SESSIONS.set(token, {
-    user: { email: user.email, role: user.role, name: user.name },
+    user: {
+      email: user.email,
+      role: user.role,
+      name: user.name,
+      programmeIds: Array.isArray(user.programmeIds) ? user.programmeIds : []
+    },
     expiresAt: Date.now() + SESSION_TTL_MS
   });
   return token;
@@ -279,6 +289,94 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// --- PROGRAMME-SCOPED AUTHORISATION HELPERS ---
+
+// The session carries a snapshot of role/name; for authorisation decisions we
+// read the live record so allocation/role changes take effect immediately.
+function getLiveUser(req) {
+  return USERS[req.user.email.toLowerCase()];
+}
+
+function editorProgrammeIds(user) {
+  return Array.isArray(user && user.programmeIds) ? user.programmeIds : [];
+}
+
+// Ids of every programme on disk (used to validate allocations).
+function existingProgrammeIds() {
+  const set = new Set();
+  fs.readdirSync(PROGRAMMES_DIR)
+    .filter(f => f.endsWith('.json'))
+    .forEach(f => {
+      try {
+        const p = JSON.parse(fs.readFileSync(path.join(PROGRAMMES_DIR, f), 'utf8'));
+        if (p && p.id) set.add(p.id);
+      } catch { /* ignore unreadable programme files */ }
+    });
+  return set;
+}
+
+// Keep only well-formed ids that reference an existing programme; dedupe.
+function sanitizeProgrammeIds(input) {
+  if (!Array.isArray(input)) return [];
+  const valid = existingProgrammeIds();
+  const out = [];
+  for (const raw of input) {
+    const id = String(raw);
+    if (isValidId(id) && valid.has(id) && !out.includes(id)) out.push(id);
+  }
+  return out;
+}
+
+// Programme ids whose scenarioIds include the given scenario.
+function programmeIdsContainingScenario(scenarioId) {
+  const ids = new Set();
+  fs.readdirSync(PROGRAMMES_DIR)
+    .filter(f => f.endsWith('.json'))
+    .forEach(f => {
+      try {
+        const p = JSON.parse(fs.readFileSync(path.join(PROGRAMMES_DIR, f), 'utf8'));
+        if (Array.isArray(p.scenarioIds) && p.scenarioIds.includes(scenarioId)) ids.add(p.id);
+      } catch { /* ignore */ }
+    });
+  return ids;
+}
+
+// An Editor may act on a scenario only if it lives in one of their programmes.
+function editorCanEditScenario(user, scenarioId) {
+  const mine = editorProgrammeIds(user);
+  if (mine.length === 0) return false;
+  const containing = programmeIdsContainingScenario(scenarioId);
+  return mine.some(id => containing.has(id));
+}
+
+// Add a scenario to a programme's scenarioIds (idempotent).
+function addScenarioToProgramme(programmeId, scenarioId) {
+  if (!isValidId(programmeId)) return;
+  const pPath = path.join(PROGRAMMES_DIR, `${programmeId}.json`);
+  if (!fs.existsSync(pPath)) return;
+  const prog = JSON.parse(fs.readFileSync(pPath, 'utf8'));
+  if (!Array.isArray(prog.scenarioIds)) prog.scenarioIds = [];
+  if (!prog.scenarioIds.includes(scenarioId)) {
+    prog.scenarioIds.push(scenarioId);
+    fs.writeFileSync(pPath, JSON.stringify(prog, null, 2), 'utf8');
+  }
+}
+
+// Middleware for PUT/DELETE on an existing scenario (uses :id). Admins always
+// pass; Editors pass only for scenarios in their allocated programmes.
+function requireScenarioAccess(req, res, next) {
+  const liveUser = getLiveUser(req);
+  if (!liveUser) {
+    return res.status(401).json({ error: 'Unauthorized.' });
+  }
+  if (liveUser.role === 'Admin') return next();
+  if (liveUser.role === 'Editor') {
+    if (editorCanEditScenario(liveUser, req.params.id)) return next();
+    return res.status(403).json({ error: 'Forbidden. You can only modify scenarios in your allocated programmes.' });
+  }
+  return res.status(403).json({ error: 'Forbidden. You do not have permission to modify scenarios.' });
+}
+
 // --- AUTH ENDPOINTS ---
 
 app.post('/api/login', async (req, res) => {
@@ -323,7 +421,8 @@ app.post('/api/login', async (req, res) => {
       user: {
         email: user.email,
         role: user.role,
-        name: user.name
+        name: user.name,
+        programmeIds: editorProgrammeIds(user)
       }
     });
   } catch (err) {
@@ -443,11 +542,34 @@ app.get('/api/scenarios/:id', authenticate, (req, res) => {
   }
 });
 
-// Create scenario
-app.post('/api/scenarios', authenticate, requireAdmin, (req, res) => {
+// Create scenario. Admins create freely; Editors must attach the new scenario
+// to one of their allocated programmes (so they retain edit rights over it).
+app.post('/api/scenarios', authenticate, (req, res) => {
+  const liveUser = getLiveUser(req);
+  if (!liveUser || (liveUser.role !== 'Admin' && liveUser.role !== 'Editor')) {
+    return res.status(403).json({ error: 'Forbidden. You do not have permission to create scenarios.' });
+  }
+
   const scenario = req.body;
   if (!scenario.title || !scenario.code) {
     return res.status(400).json({ error: 'Scenario title and code are required.' });
+  }
+
+  // programmeId is a transient field used only to attach the scenario; it is
+  // never persisted on the scenario itself (programmes own the membership).
+  const requestedProgrammeId = scenario.programmeId;
+  delete scenario.programmeId;
+
+  let targetProgrammeId = null;
+  if (liveUser.role === 'Editor') {
+    const mine = editorProgrammeIds(liveUser);
+    if (!requestedProgrammeId || !mine.includes(requestedProgrammeId)) {
+      return res.status(403).json({ error: 'Select one of your allocated programmes for the new scenario.' });
+    }
+    targetProgrammeId = requestedProgrammeId;
+  } else if (requestedProgrammeId && existingProgrammeIds().has(requestedProgrammeId)) {
+    // Admins may optionally attach on create too.
+    targetProgrammeId = requestedProgrammeId;
   }
 
   // Generate ID if not provided; validate any client-supplied id.
@@ -466,6 +588,7 @@ app.post('/api/scenarios', authenticate, requireAdmin, (req, res) => {
 
   try {
     fs.writeFileSync(filePath, JSON.stringify(scenario, null, 2), 'utf8');
+    if (targetProgrammeId) addScenarioToProgramme(targetProgrammeId, scenario.id);
     res.status(201).json(scenario);
   } catch (err) {
     res.status(500).json({ error: 'Failed to write scenario file: ' + err.message });
@@ -473,12 +596,13 @@ app.post('/api/scenarios', authenticate, requireAdmin, (req, res) => {
 });
 
 // Update scenario
-app.put('/api/scenarios/:id', authenticate, requireAdmin, (req, res) => {
+app.put('/api/scenarios/:id', authenticate, requireScenarioAccess, (req, res) => {
   const scenarioId = req.params.id;
   if (!isValidId(scenarioId)) {
     return res.status(400).json({ error: 'Invalid scenario id.' });
   }
   const scenario = req.body;
+  delete scenario.programmeId; // transient attach hint; never persisted
   const filePath = path.join(SCENARIOS_DIR, `${scenarioId}.json`);
 
   if (!fs.existsSync(filePath)) {
@@ -496,7 +620,7 @@ app.put('/api/scenarios/:id', authenticate, requireAdmin, (req, res) => {
 });
 
 // Delete scenario (moves to recycle bin)
-app.delete('/api/scenarios/:id', authenticate, requireAdmin, (req, res) => {
+app.delete('/api/scenarios/:id', authenticate, requireScenarioAccess, (req, res) => {
   const scenarioId = req.params.id;
   if (!isValidId(scenarioId)) {
     return res.status(400).json({ error: 'Invalid scenario id.' });
@@ -663,7 +787,9 @@ app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
     role,
     name: String(name),
     createdAt: new Date().toISOString(),
-    lastLogin: null
+    lastLogin: null,
+    // Allocations only apply to Editors; ignored (empty) for other roles.
+    programmeIds: role === 'Editor' ? sanitizeProgrammeIds(req.body.programmeIds) : []
   };
 
   try {
@@ -703,14 +829,22 @@ app.put('/api/users/:email', authenticate, requireAdmin, async (req, res) => {
 
   USERS[targetEmail].name = String(name);
   USERS[targetEmail].role = role;
+  // Re-derive allocations from the request; clear them entirely if the user is
+  // no longer an Editor so stale grants can't linger.
+  USERS[targetEmail].programmeIds = role === 'Editor' ? sanitizeProgrammeIds(req.body.programmeIds) : [];
   if (password) {
     USERS[targetEmail].password = await hashPassword(password);
   }
 
   try {
     saveUsers();
-    // Live sessions must reflect the change immediately (e.g. demotion).
-    updateSessionsFor(targetEmail, { name: USERS[targetEmail].name, role });
+    // Live sessions must reflect the change immediately (e.g. demotion or a
+    // changed programme allocation gating scenario edits).
+    updateSessionsFor(targetEmail, {
+      name: USERS[targetEmail].name,
+      role,
+      programmeIds: USERS[targetEmail].programmeIds
+    });
     res.json(publicUser(USERS[targetEmail]));
   } catch (err) {
     res.status(500).json({ error: 'Failed to update user: ' + err.message });
@@ -823,7 +957,10 @@ app.post('/api/users/bulk', authenticate, requireAdmin, (req, res) => {
         delete USERS[email].disabled;
       } else {
         USERS[email].role = role;
-        updateSessionsFor(email, { role });
+        // Bulk role changes can't carry per-user allocations; clear them when
+        // the target is no longer an Editor so stale grants don't linger.
+        if (role !== 'Editor') USERS[email].programmeIds = [];
+        updateSessionsFor(email, { role, programmeIds: USERS[email].programmeIds || [] });
       }
     });
     if (targets.length > 0) saveUsers();
@@ -879,7 +1016,10 @@ app.post('/api/users/bulk-create', authenticate, requireAdmin, async (req, res) 
         role,
         name,
         createdAt: new Date().toISOString(),
-        lastLogin: null
+        lastLogin: null,
+        // Programme allocations can't be expressed in the paste format; an
+        // admin assigns them afterwards via the edit modal.
+        programmeIds: []
       };
       pendingEmails.add(email);
       created.push({ email, name, role, tempPassword: suppliedPassword ? null : password });

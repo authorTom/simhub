@@ -383,6 +383,36 @@ header {
   color: var(--accent-amber);
 }
 
+/* Editor: programme-scoped middle tier — violet to sit between admin & read-only */
+.badge-editor {
+  background: rgba(139, 92, 246, 0.14);
+  color: #8b5cf6;
+}
+
+/* Programme allocation checklist in the user edit modal */
+.prog-alloc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-sm);
+  background: var(--glass-card-bg);
+}
+.prog-alloc-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+.prog-alloc-item input {
+  width: auto;
+  margin: 0;
+}
+
 /* Suspended accounts stay visible but recede; badges keep their own colour */
 .data-table tr.row-disabled td {
   color: var(--text-muted);

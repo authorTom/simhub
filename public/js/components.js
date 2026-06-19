@@ -218,7 +218,7 @@ const components = {
     }
 
     if (filtered.length === 0) {
-      const emptyCta = api.isAdmin() && !searchQuery
+      const emptyCta = api.canCreateScenarios() && !searchQuery
         ? `<button class="btn btn-primary" onclick="app.navigate('scenario-form-new')"><i class="fa-solid fa-plus"></i> Create your first scenario</button>`
         : '';
       container.innerHTML = `
@@ -453,6 +453,23 @@ const components = {
 
   // --- 3. RENDER SCENARIO DETAILED REPORT SHEET ---
   
+  // Programmes the current Editor is allocated to (from cached programme list).
+  myEditableProgrammes() {
+    const mine = api.myProgrammeIds();
+    return this.allProgrammes.filter(p => mine.includes(p.id));
+  },
+
+  // Can the current user edit/delete this scenario? Admins always; Editors only
+  // when the scenario belongs to one of their allocated programmes.
+  canEditScenario(scenarioId) {
+    if (api.isAdmin()) return true;
+    if (!api.isEditor()) return false;
+    const mine = api.myProgrammeIds();
+    if (!mine.length) return false;
+    return this.allProgrammes.some(p =>
+      mine.includes(p.id) && Array.isArray(p.scenarioIds) && p.scenarioIds.includes(scenarioId));
+  },
+
   async viewScenarioDetail(id) {
     try {
       // Display-only view: escape the entire scenario so any user-authored
@@ -468,11 +485,23 @@ const components = {
       const pdfBtn = document.getElementById('btn-export-pdf');
       if (pdfBtn) pdfBtn.onclick = () => this.exportScenarioToPDF(id);
 
+      // Edit/Delete are shown per-scenario: Admins for all, Editors only for
+      // scenarios in their allocated programmes. This overrides the blanket
+      // role gating applied at login for these two buttons.
+      const canEdit = this.canEditScenario(id);
       const editBtn = document.getElementById('btn-edit-scenario');
-      if (editBtn) editBtn.onclick = () => this.editScenarioForm(id);
-      
+      if (editBtn) {
+        editBtn.onclick = () => this.editScenarioForm(id);
+        editBtn.style.display = canEdit ? '' : 'none';
+        if (canEdit) editBtn.removeAttribute('disabled');
+      }
+
       const deleteBtn = document.getElementById('btn-delete-scenario');
-      if (deleteBtn) deleteBtn.onclick = () => this.deleteScenario(id);
+      if (deleteBtn) {
+        deleteBtn.onclick = () => this.deleteScenario(id);
+        deleteBtn.style.display = canEdit ? '' : 'none';
+        if (canEdit) deleteBtn.removeAttribute('disabled');
+      }
 
       // Map dynamic lists
       const techOutcomes = scenario.learningOutcomes?.technical || [];
@@ -1628,10 +1657,24 @@ const components = {
       references: { guidelines: '', evidenceBase: '', preLearning: '', relatedScenarios: '' }
     };
 
+    // Editors must place a NEW scenario into one of their allocated programmes
+    // (they can only edit scenarios that live in their programmes). Admins
+    // manage programme membership separately, so they don't see this selector.
+    const showProgrammePicker = api.isEditor() && !existingData;
+    const editorProgrammes = showProgrammePicker ? this.myEditableProgrammes() : [];
+    const programmePickerHtml = showProgrammePicker ? `
+        <div class="form-group">
+          <label for="form-programme">Programme <span style="color:var(--accent-red);">*</span> <span style="font-weight:normal; color:var(--text-muted); font-size:0.8rem;">— the new scenario is added to this allocated programme</span></label>
+          <select id="form-programme" required>
+            ${editorProgrammes.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}
+          </select>
+        </div>` : '';
+
     content.innerHTML = `
       <!-- TAB 1: GENERAL & GOVERNANCE -->
       <div id="tab-general" class="form-tab-group">
         <h3 style="margin-bottom:16px; color:var(--accent-blue);"><i class="fa-solid fa-circle-info"></i> Scenario Governance & Identification</h3>
+        ${programmePickerHtml}
         <div class="form-row-3">
           <div class="form-group">
             <label for="form-code">Scenario Code</label>
@@ -2335,6 +2378,18 @@ const components = {
       },
       progression, prebrief, debrief, aspihMapping, references, versionHistory
     };
+
+    // Editors creating a scenario must attach it to one of their programmes;
+    // the server validates this against their actual allocations.
+    const programmeSelect = document.getElementById('form-programme');
+    if (!id && programmeSelect) {
+      if (!programmeSelect.value) {
+        app.showToast('Please choose a programme for the new scenario.', 'error');
+        this.switchEditorTab('tab-general');
+        return;
+      }
+      payload.programmeId = programmeSelect.value;
+    }
 
     try {
       if (id) {
@@ -3196,7 +3251,12 @@ const components = {
     tbody.innerHTML = visible.map(u => {
       const isSelf = u.email.toLowerCase() === selfEmail;
       const checked = state.selected.has(u.email);
-      const roleBadgeClass = u.role === 'Admin' ? 'badge badge-admin' : 'badge badge-readonly';
+      const roleBadgeClass = u.role === 'Admin' ? 'badge badge-admin'
+        : u.role === 'Editor' ? 'badge badge-editor' : 'badge badge-readonly';
+      const allocCount = (u.role === 'Editor' && Array.isArray(u.programmeIds)) ? u.programmeIds.length : 0;
+      const allocHint = u.role === 'Editor'
+        ? `<div style="font-size:0.72rem; color:var(--text-muted); margin-top:3px;">${allocCount} programme${allocCount === 1 ? '' : 's'}</div>`
+        : '';
       return `
         <tr class="${checked ? 'row-selected' : ''}${u.disabled ? ' row-disabled' : ''}">
           <td>
@@ -3211,7 +3271,7 @@ const components = {
             </div>
           </td>
           <td class="mono">${esc(u.email)}</td>
-          <td><span class="${roleBadgeClass}">${esc(u.role)}</span></td>
+          <td><span class="${roleBadgeClass}">${esc(u.role)}</span>${allocHint}</td>
           <td style="white-space:nowrap; color:var(--text-secondary);" title="${esc(this.fullTimestamp(u.createdAt))}">${esc(this.formatDate(u.createdAt))}</td>
           <td style="white-space:nowrap;" title="${esc(this.fullTimestamp(u.lastLogin))}">${this.lastLoginCell(u.lastLogin)}</td>
           <td style="text-align:right; white-space:nowrap;">
@@ -3513,7 +3573,21 @@ const components = {
       }
     }
 
+    // Programmes are needed to render Editor allocations; refresh if not cached.
+    try {
+      if (!this.allProgrammes || this.allProgrammes.length === 0) {
+        this.allProgrammes = await api.getProgrammes();
+      }
+    } catch { /* allocation list will simply be empty */ }
+
     const isSelf = existing && existing.email.toLowerCase() === api.user.email.toLowerCase();
+    const allocated = new Set(existing && Array.isArray(existing.programmeIds) ? existing.programmeIds : []);
+    const isEditor = existing && existing.role === 'Editor';
+    const programmeChecboxes = (this.allProgrammes || []).map(p => `
+      <label class="prog-alloc-item">
+        <input type="checkbox" class="user-programme-cb" value="${esc(p.id)}" ${allocated.has(p.id) ? 'checked' : ''}>
+        <span>${esc(p.name)}</span>
+      </label>`).join('') || '<p style="font-size:0.8rem; color:var(--text-muted); margin:0;">No programmes exist yet. Create a programme first to allocate it.</p>';
 
     modalContent.innerHTML = `
       <div class="flex-between m-b-20" style="margin-bottom: 20px;">
@@ -3545,13 +3619,19 @@ const components = {
         </div>
         <div class="form-group">
           <label for="user-role">System Permission Level</label>
-          <select id="user-role" required ${isSelf ? 'disabled' : ''}>
+          <select id="user-role" required ${isSelf ? 'disabled' : ''} onchange="components.toggleProgrammeAllocation()">
             <option value="Admin" ${existing && existing.role === 'Admin' ? 'selected' : ''}>Admin (Full Read/Write Access)</option>
+            <option value="Editor" ${isEditor ? 'selected' : ''}>Editor (Edit scenarios in allocated programmes)</option>
             <option value="Read-Only" ${existing && existing.role === 'Read-Only' ? 'selected' : ''}>Read-Only (Faculty Access)</option>
           </select>
           ${isSelf ? '<p style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;"><i class="fa-solid fa-triangle-exclamation"></i> You cannot change your own role to avoid self-lockout.</p>' : ''}
         </div>
-        
+
+        <div class="form-group" id="user-programme-allocation" style="display: ${isEditor ? 'block' : 'none'};">
+          <label>Allocated Programmes <span style="font-weight:normal; color:var(--text-muted); font-size:0.8rem;">— Editors may create and edit scenarios within these</span></label>
+          <div class="prog-alloc-list">${programmeChecboxes}</div>
+        </div>
+
         <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
           <button type="button" class="btn btn-secondary" onclick="components.closeModal()">Cancel</button>
           <button type="submit" class="btn btn-emerald">
@@ -3576,6 +3656,13 @@ const components = {
     });
 
     modal.style.display = 'flex';
+  },
+
+  // Show the programme allocation list only when the Editor role is selected.
+  toggleProgrammeAllocation() {
+    const role = document.getElementById('user-role')?.value;
+    const block = document.getElementById('user-programme-allocation');
+    if (block) block.style.display = role === 'Editor' ? 'block' : 'none';
   },
 
   // Strong readable password from an unambiguous alphabet (matches server)
@@ -3687,12 +3774,17 @@ const components = {
     const password = document.getElementById('user-password').value;
     const roleSelect = document.getElementById('user-role');
     const role = roleSelect.value;
-    
+
+    // Allocations only matter for Editors; the server ignores them otherwise.
+    const programmeIds = role === 'Editor'
+      ? Array.from(document.querySelectorAll('.user-programme-cb:checked')).map(cb => cb.value)
+      : [];
+
     try {
       if (existingEmail) {
-        await api.updateUser(existingEmail, { name, password, role });
+        await api.updateUser(existingEmail, { name, password, role, programmeIds });
         app.showToast('Faculty user updated successfully.', 'success');
-        
+
         if (existingEmail.toLowerCase() === api.user.email.toLowerCase()) {
           api.user.name = name;
           localStorage.setItem('simhub_user', JSON.stringify(api.user));
@@ -3700,7 +3792,7 @@ const components = {
         }
       } else {
         const email = document.getElementById('user-email').value;
-        await api.createUser({ email, name, password, role });
+        await api.createUser({ email, name, password, role, programmeIds });
         app.showToast('New faculty user created successfully.', 'success');
       }
       

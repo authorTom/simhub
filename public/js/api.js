@@ -76,6 +76,20 @@ const api = {
     return this.user && this.user.role === 'Admin';
   },
 
+  isEditor() {
+    return this.user && this.user.role === 'Editor';
+  },
+
+  // Programmes the current Editor may edit scenarios within.
+  myProgrammeIds() {
+    return (this.user && Array.isArray(this.user.programmeIds)) ? this.user.programmeIds : [];
+  },
+
+  // Admins can always create scenarios; Editors only if they hold ≥1 programme.
+  canCreateScenarios() {
+    return this.isAdmin() || (this.isEditor() && this.myProgrammeIds().length > 0);
+  },
+
   // Self-service: change the signed-in user's own password.
   async changeOwnPassword(currentPassword, newPassword) {
     return this.request('/api/me/password', {
