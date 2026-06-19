@@ -76,6 +76,14 @@ const api = {
     return this.user && this.user.role === 'Admin';
   },
 
+  // Self-service: change the signed-in user's own password.
+  async changeOwnPassword(currentPassword, newPassword) {
+    return this.request('/api/me/password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
+  },
+
   // --- Scenarios API ---
   async getScenarios() {
     return this.request('/api/scenarios');

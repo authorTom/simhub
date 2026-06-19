@@ -292,6 +292,64 @@ header {
   gap: 16px;
 }
 
+/* User chip dropdown menu */
+.user-menu {
+  position: relative;
+}
+.user-chip-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font: inherit;
+  color: var(--text-primary);
+}
+.user-chip-caret {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  transition: transform var(--transition-fast);
+}
+.user-chip-btn.open .user-chip-caret {
+  transform: rotate(180deg);
+}
+.user-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  background: var(--glass-card-bg);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--border-radius-sm);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  z-index: 1400;
+}
+.user-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--border-radius-sm);
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.user-dropdown-item:hover {
+  background: var(--hover-overlay);
+}
+.user-dropdown-item i {
+  color: var(--accent-blue);
+  width: 16px;
+  text-align: center;
+}
+
 /* Badges: quiet tinted pills — no borders, no shouting */
 .badge {
   padding: 3px 10px;

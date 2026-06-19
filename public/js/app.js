@@ -23,6 +23,53 @@ const app = {
         search.focus();
       }
     });
+
+    // 5. Close the user-chip dropdown on any click outside it, or on Escape
+    document.addEventListener('click', (e) => {
+      const menu = document.getElementById('user-menu');
+      if (menu && !menu.contains(e.target)) this.closeUserMenu();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') this.closeUserMenu();
+    });
+  },
+
+  // --- USER CHIP DROPDOWN ---
+
+  toggleUserMenu(event) {
+    // Stop the click from reaching the document handler that closes the menu.
+    if (event) event.stopPropagation();
+    const dropdown = document.getElementById('user-dropdown');
+    if (!dropdown) return;
+    const isOpen = dropdown.style.display === 'block';
+    if (isOpen) this.closeUserMenu();
+    else this.openUserMenu();
+  },
+
+  openUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    const chip = document.getElementById('user-chip');
+    if (!dropdown) return;
+    dropdown.style.display = 'block';
+    if (chip) {
+      chip.classList.add('open');
+      chip.setAttribute('aria-expanded', 'true');
+    }
+  },
+
+  closeUserMenu() {
+    const dropdown = document.getElementById('user-dropdown');
+    const chip = document.getElementById('user-chip');
+    if (dropdown) dropdown.style.display = 'none';
+    if (chip) {
+      chip.classList.remove('open');
+      chip.setAttribute('aria-expanded', 'false');
+    }
+  },
+
+  openChangePassword() {
+    this.closeUserMenu();
+    components.openChangePasswordModal();
   },
 
   async checkSession() {

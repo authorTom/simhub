@@ -3536,6 +3536,101 @@ const components = {
     return Array.from(bytes, b => alphabet[b % alphabet.length]).join('');
   },
 
+  // --- SELF-SERVICE PASSWORD CHANGE ---
+
+  openChangePasswordModal() {
+    const modal = document.getElementById('modal-container');
+    const modalContent = document.getElementById('modal-card');
+    if (!modal || !modalContent) return;
+
+    modalContent.innerHTML = `
+      <div class="flex-between m-b-20" style="margin-bottom: 20px;">
+        <h3 style="font-size:1.3rem; color: var(--accent-blue);">
+          <i class="fa-solid fa-key"></i> Change Your Password
+        </h3>
+        <button onclick="components.closeModal()" style="background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.2rem;">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form id="change-password-form">
+        <div class="form-group">
+          <label for="cp-current">Current Password</label>
+          <input type="password" id="cp-current" required autocomplete="current-password" placeholder="Enter your current password">
+        </div>
+        <div class="form-group">
+          <label for="cp-new">New Password</label>
+          <div style="display:flex; gap:8px;">
+            <input type="password" id="cp-new" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters" style="flex:1;">
+            <button type="button" class="btn btn-secondary" id="cp-generate" title="Generate a strong password" style="padding: 10px 14px;">
+              <i class="fa-solid fa-dice"></i> Generate
+            </button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="cp-confirm">Confirm New Password</label>
+          <input type="password" id="cp-confirm" required autocomplete="new-password" placeholder="Re-enter the new password">
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
+          <button type="button" class="btn btn-secondary" onclick="components.closeModal()">Cancel</button>
+          <button type="submit" class="btn btn-emerald">
+            <i class="fa-solid fa-floppy-disk"></i> Update Password
+          </button>
+        </div>
+      </form>
+    `;
+
+    document.getElementById('change-password-form')
+      .addEventListener('submit', (e) => this.submitChangePassword(e));
+
+    // Generate fills both fields and reveals them so the user can record the
+    // value before saving.
+    document.getElementById('cp-generate').addEventListener('click', () => {
+      const pwd = this.generatePassword();
+      const newField = document.getElementById('cp-new');
+      const confirmField = document.getElementById('cp-confirm');
+      newField.type = confirmField.type = 'text';
+      newField.value = confirmField.value = pwd;
+      navigator.clipboard?.writeText(pwd)
+        .then(() => app.showToast('Password generated and copied to clipboard.', 'success'))
+        .catch(() => app.showToast('Password generated — copy it before saving.', 'success'));
+    });
+
+    modal.style.display = 'flex';
+    setTimeout(() => document.getElementById('cp-current')?.focus(), 0);
+  },
+
+  async submitChangePassword(e) {
+    e.preventDefault();
+    const currentPassword = document.getElementById('cp-current').value;
+    const newPassword = document.getElementById('cp-new').value;
+    const confirmPassword = document.getElementById('cp-confirm').value;
+
+    // Client-side guards mirror the server so the user gets instant feedback;
+    // the server re-validates regardless.
+    if (newPassword.length < 8) {
+      app.showToast('New password must be at least 8 characters long.', 'error');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      app.showToast('New password and confirmation do not match.', 'error');
+      return;
+    }
+    if (newPassword === currentPassword) {
+      app.showToast('New password must be different from your current password.', 'error');
+      return;
+    }
+
+    try {
+      await api.changeOwnPassword(currentPassword, newPassword);
+      this.closeModal();
+      app.showToast('Your password has been changed successfully.', 'success');
+    } catch (err) {
+      app.showToast(err.message, 'error');
+    }
+  },
+
   async saveUser(e, existingEmail) {
     e.preventDefault();
     const name = document.getElementById('user-name').value;
