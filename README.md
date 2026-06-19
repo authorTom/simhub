@@ -167,6 +167,11 @@ We welcome contributions to make clinical simulation more structured and accessi
 
 ## 📝 Change Log
 
+### [2026-06-19] - Account Activity Columns
+*   **Created & Last Login**: The user administration table now shows when each account was created and when it last signed in, making stale accounts easy to spot and prune. `createdAt` is stamped on user creation (single and bulk) and `lastLogin` is recorded on every successful login (best-effort persistence that never blocks sign-in); both are exposed via the users API and included in the CSV export.
+*   **Stale Highlighting**: Accounts that have never logged in, or whose last login is older than 90 days, are flagged with an amber cue. Last-login is shown in friendly relative terms ("Today", "3 days ago") with the full timestamp on hover.
+*   **Backwards Compatible**: Accounts created before this change report "Unknown" creation and "Never" login rather than a misleading value, until their next sign-in records real data.
+
 ### [2026-06-19] - Self-Service Password Change
 *   **Change Your Own Password**: Any signed-in user (not just Admins) can now change their own password via a "Change Password" item in a new dropdown under the user chip. New `POST /api/me/password` endpoint re-authenticates with the current password, enforces a minimum length, and rejects reusing the current password.
 *   **Session Hygiene**: On a successful change, every *other* live session for the account is revoked while the caller's own session is preserved, so a leaked or stale session cannot outlive a password rotation.
