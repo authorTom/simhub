@@ -167,6 +167,11 @@ We welcome contributions to make clinical simulation more structured and accessi
 
 ## 📝 Change Log
 
+### [2026-06-19] - Self-Service Password Change
+*   **Change Your Own Password**: Any signed-in user (not just Admins) can now change their own password via a "Change Password" item in a new dropdown under the user chip. New `POST /api/me/password` endpoint re-authenticates with the current password, enforces a minimum length, and rejects reusing the current password.
+*   **Session Hygiene**: On a successful change, every *other* live session for the account is revoked while the caller's own session is preserved, so a leaked or stale session cannot outlive a password rotation.
+*   **UI**: The header user chip is now a dropdown (caret, click-outside / Escape to close) hosting the change-password action; the modal offers a one-click strong-password generator and validates match/length client-side before submitting.
+
 ### [2026-06-11] - Account Disable / Suspend
 *   **Reversible Suspension**: Accounts can now be disabled instead of deleted (rotating faculty, leave of absence). Disabled accounts cannot sign in — the check runs only after password verification so the flag is not enumerable — and their live sessions are revoked immediately. Re-enabling restores access with no data loss.
 *   **Bulk Disable/Enable**: New `disable`/`enable` actions on `POST /api/users/bulk` with the same server-side batch guards as delete/set-role: your own account is skipped, and a batch can never leave the system without an active Admin.

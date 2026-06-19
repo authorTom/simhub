@@ -122,9 +122,12 @@ function createSession(user) {
 }
 
 // Drop every live session belonging to an email (account deleted).
-function revokeSessionsFor(email) {
+// Pass exceptToken to keep one session alive — used by self-service
+// password change so the caller is not logged out of their own session
+// while every other (possibly stale) session is revoked.
+function revokeSessionsFor(email, exceptToken = null) {
   for (const [token, session] of SESSIONS) {
-    if (session.user.email.toLowerCase() === email) SESSIONS.delete(token);
+    if (session.user.email.toLowerCase() === email && token !== exceptToken) SESSIONS.delete(token);
   }
 }
 
@@ -317,6 +320,54 @@ app.post('/api/logout', authenticate, (req, res) => {
 
 app.get('/api/me', authenticate, (req, res) => {
   res.json({ user: req.user });
+});
+
+// Minimum length for a self-chosen password. Admin-set passwords are not
+// constrained, but self-service is a sensible place to enforce a floor.
+const MIN_PASSWORD_LENGTH = 8;
+
+// Self-service password change for the currently authenticated user.
+// Requires the current password (re-authentication) so a hijacked session
+// cannot silently lock out the real owner, and rejects unchanged or
+// too-short new passwords. Every other live session for the account is
+// revoked on success so an older/leaked session cannot outlive the
+// rotation; the caller's own session is preserved.
+app.post('/api/me/password', authenticate, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current and new passwords are required.' });
+  }
+  if (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `New password must be at least ${MIN_PASSWORD_LENGTH} characters long.` });
+  }
+
+  const email = req.user.email.toLowerCase();
+  const user = USERS[email];
+  if (!user) {
+    return res.status(404).json({ error: 'Account not found.' });
+  }
+
+  try {
+    const ok = await verifyPassword(currentPassword, user.password);
+    if (!ok) {
+      return res.status(401).json({ error: 'Current password is incorrect.' });
+    }
+    if (await verifyPassword(newPassword, user.password)) {
+      return res.status(400).json({ error: 'New password must be different from the current password.' });
+    }
+
+    user.password = await hashPassword(newPassword);
+    saveUsers();
+
+    // Preserve this session, drop all others for the account.
+    const currentToken = req.headers['authorization'].split(' ')[1];
+    revokeSessionsFor(email, currentToken);
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to change password: ' + err.message });
+  }
 });
 
 

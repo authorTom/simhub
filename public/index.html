@@ -70,9 +70,17 @@
           <i class="fa-solid fa-sun" id="theme-icon-sun" style="display:none;"></i>
           <i class="fa-solid fa-moon" id="theme-icon-moon"></i>
         </button>
-        <div class="glass-card" style="padding: 6px 12px; display: flex; align-items: center; gap: 8px;">
-          <span id="user-display-name" style="font-size: 0.9rem; font-weight: 500;">Clinical Faculty</span>
-          <span id="user-display-badge" class="badge badge-readonly">Read-Only</span>
+        <div class="user-menu" id="user-menu">
+          <button class="glass-card user-chip-btn" id="user-chip" onclick="app.toggleUserMenu(event)" aria-haspopup="true" aria-expanded="false">
+            <span id="user-display-name" style="font-size: 0.9rem; font-weight: 500;">Clinical Faculty</span>
+            <span id="user-display-badge" class="badge badge-readonly">Read-Only</span>
+            <i class="fa-solid fa-chevron-down user-chip-caret"></i>
+          </button>
+          <div class="user-dropdown" id="user-dropdown" style="display: none;">
+            <button class="user-dropdown-item" onclick="app.openChangePassword()">
+              <i class="fa-solid fa-key"></i> Change Password
+            </button>
+          </div>
         </div>
         <button class="btn btn-secondary" onclick="app.logout()" style="padding: 8px 12px;">
           <i class="fa-solid fa-right-from-bracket"></i>
