@@ -3123,6 +3123,48 @@ const components = {
       .sort((a, b) => a.name.localeCompare(b.name));
   },
 
+  // Accounts with no sign-in this many days are flagged as stale (a prompt
+  // to prune). Never-logged-in accounts are always treated as stale.
+  STALE_LOGIN_DAYS: 90,
+
+  // Absolute, compact date (e.g. "27 May 2026") or a fallback for missing data.
+  formatDate(iso, fallback = 'Unknown') {
+    if (!iso) return fallback;
+    const d = new Date(iso);
+    if (isNaN(d)) return fallback;
+    return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+  },
+
+  // Full timestamp for the cell's tooltip.
+  fullTimestamp(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return isNaN(d) ? '' : d.toLocaleString();
+  },
+
+  daysSince(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return Infinity;
+    return Math.floor((Date.now() - d.getTime()) / 86400000);
+  },
+
+  // Last-login cell: relative wording for recency, plus a "stale" amber cue
+  // for accounts that have never signed in or are past the staleness window.
+  lastLoginCell(iso) {
+    if (!iso) {
+      return '<span class="stale-account"><i class="fa-solid fa-circle-exclamation"></i> Never</span>';
+    }
+    const days = this.daysSince(iso);
+    let text;
+    if (days <= 0) text = 'Today';
+    else if (days === 1) text = 'Yesterday';
+    else if (days < 30) text = `${days} days ago`;
+    else text = esc(this.formatDate(iso));
+    return days >= this.STALE_LOGIN_DAYS
+      ? `<span class="stale-account"><i class="fa-solid fa-circle-exclamation"></i> ${text}</span>`
+      : text;
+  },
+
   renderUsersTable() {
     const tbody = document.getElementById('admin-users-tbody');
     if (!tbody) return;
@@ -3144,7 +3186,7 @@ const components = {
 
     if (visible.length === 0) {
       tbody.innerHTML = `
-        <tr><td colspan="5" style="text-align:center; padding: 36px; color: var(--text-muted);">
+        <tr><td colspan="7" style="text-align:center; padding: 36px; color: var(--text-muted);">
           No accounts match the current filters.
         </td></tr>`;
       this.updateBulkBar();
@@ -3170,6 +3212,8 @@ const components = {
           </td>
           <td class="mono">${esc(u.email)}</td>
           <td><span class="${roleBadgeClass}">${esc(u.role)}</span></td>
+          <td style="white-space:nowrap; color:var(--text-secondary);" title="${esc(this.fullTimestamp(u.createdAt))}">${esc(this.formatDate(u.createdAt))}</td>
+          <td style="white-space:nowrap;" title="${esc(this.fullTimestamp(u.lastLogin))}">${this.lastLoginCell(u.lastLogin)}</td>
           <td style="text-align:right; white-space:nowrap;">
             <button class="icon-btn" data-action="edit-user" data-email="${esc(u.email)}" title="Edit account">
               <i class="fa-solid fa-pen-to-square"></i>
@@ -3306,7 +3350,13 @@ const components = {
       return;
     }
     const quote = v => `"${String(v).replace(/"/g, '""')}"`;
-    const csv = ['email,name,role,status', ...users.map(u => [u.email, u.name, u.role, u.disabled ? 'Disabled' : 'Active'].map(quote).join(','))].join('\r\n');
+    const csv = ['email,name,role,status,created,last_login',
+      ...users.map(u => [
+        u.email, u.name, u.role,
+        u.disabled ? 'Disabled' : 'Active',
+        u.createdAt || '',
+        u.lastLogin || 'Never'
+      ].map(quote).join(','))].join('\r\n');
     this.downloadFile(csv, `simhub_users_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv');
     app.showToast('User list exported.', 'success');
   },

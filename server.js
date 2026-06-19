@@ -72,8 +72,17 @@ function isValidId(id) {
 }
 
 // Strip the password field before sending a user object to the client.
+// createdAt/lastLogin may be absent on accounts that predate this feature;
+// they surface as null so the UI can show "Unknown"/"Never".
 function publicUser(u) {
-  return { email: u.email, name: u.name, role: u.role, disabled: !!u.disabled };
+  return {
+    email: u.email,
+    name: u.name,
+    role: u.role,
+    disabled: !!u.disabled,
+    createdAt: u.createdAt || null,
+    lastLogin: u.lastLogin || null
+  };
 }
 
 // Directories for persistence
@@ -197,7 +206,12 @@ function buildDefaultUsers() {
       name: 'Clinical Faculty'
     }
   });
-  Object.values(defaults).forEach(u => { u.password = hashPasswordSync(u.password); });
+  const now = new Date().toISOString();
+  Object.values(defaults).forEach(u => {
+    u.password = hashPasswordSync(u.password);
+    u.createdAt = now;
+    u.lastLogin = null;
+  });
   return defaults;
 }
 
@@ -296,6 +310,12 @@ app.post('/api/login', async (req, res) => {
     }
 
     LOGIN_ATTEMPTS.delete(throttleKey);
+
+    // Stamp the successful sign-in. Persist best-effort so a disk hiccup
+    // recording a timestamp can never block a valid login.
+    user.lastLogin = new Date().toISOString();
+    try { saveUsers(); } catch (e) { console.error('Failed to persist lastLogin:', e); }
+
     const token = createSession(user);
 
     res.json({
@@ -641,7 +661,9 @@ app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
     email: normalizedEmail,
     password: await hashPassword(password),
     role,
-    name: String(name)
+    name: String(name),
+    createdAt: new Date().toISOString(),
+    lastLogin: null
   };
 
   try {
@@ -855,7 +877,9 @@ app.post('/api/users/bulk-create', authenticate, requireAdmin, async (req, res) 
         email,
         password: await hashPassword(password),
         role,
-        name
+        name,
+        createdAt: new Date().toISOString(),
+        lastLogin: null
       };
       pendingEmails.add(email);
       created.push({ email, name, role, tempPassword: suppliedPassword ? null : password });

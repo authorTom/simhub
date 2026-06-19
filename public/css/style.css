@@ -392,6 +392,15 @@ header {
   opacity: 0.55;
 }
 
+/* Stale / never-logged-in accounts: amber cue to prompt pruning */
+.stale-account {
+  color: var(--accent-amber);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.82rem;
+}
+
 /* Content Layout */
 main {
   padding: 30px 40px;
