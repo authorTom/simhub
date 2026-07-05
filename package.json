@@ -23,12 +23,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yourusername/simhub.git"
+    "url": "git+https://github.com/authorTom/simhub.git"
   },
   "bugs": {
-    "url": "https://github.com/yourusername/simhub/issues"
+    "url": "https://github.com/authorTom/simhub/issues"
   },
-  "homepage": "https://github.com/yourusername/simhub#readme",
+  "homepage": "https://github.com/authorTom/simhub#readme",
   "dependencies": {
     "express": "^4.19.2"
   },
