@@ -6,6 +6,14 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Set TRUST_PROXY=1 (or the number of proxy hops) when running behind a
+// reverse proxy (nginx, Caddy, ...) so req.ip reflects the real client for
+// login throttling rather than the proxy's address. Off by default because
+// trusting proxy headers without a proxy lets clients spoof their IP.
+if (process.env.TRUST_PROXY) {
+  app.set('trust proxy', Number(process.env.TRUST_PROXY) || 1);
+}
+
 // --- Security helpers ---
 
 // Promisified scrypt so password checks never block the event loop.
@@ -103,6 +111,27 @@ const RECYCLE_BIN_DIR = path.join(DATA_DIR, 'recycle_bin');
   }
 });
 
+// Read + parse a JSON file, returning null instead of throwing when the file
+// is missing or corrupt. One damaged file must never take down a whole
+// listing endpoint; callers skip null entries.
+function readJsonSafe(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (e) {
+    console.error(`Skipping unreadable JSON file ${filePath}: ${e.message}`);
+    return null;
+  }
+}
+
+// Crash-safe JSON write: write to a temp file in the same directory, then
+// rename over the target. A crash mid-write can then never leave a
+// half-written (corrupt) file behind.
+function writeJsonAtomic(filePath, data) {
+  const tmp = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+  fs.renameSync(tmp, filePath);
+}
+
 // Middleware
 
 // Baseline security headers on every response.
@@ -125,6 +154,31 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Simple Token-based Auth System
 const SESSIONS = new Map(); // token -> { user, expiresAt }
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours, refreshed on activity
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+
+// Sessions are persisted so a restart/deploy does not sign everyone out.
+// Tokens on disk carry the same sensitivity as users.json: the data
+// directory must not be web-served or world-readable.
+function loadSessions() {
+  const stored = fs.existsSync(SESSIONS_FILE) ? readJsonSafe(SESSIONS_FILE) : null;
+  if (!stored) return;
+  const now = Date.now();
+  for (const [token, session] of Object.entries(stored)) {
+    if (session && session.user && session.expiresAt > now) {
+      SESSIONS.set(token, session);
+    }
+  }
+}
+
+function saveSessions() {
+  try {
+    writeJsonAtomic(SESSIONS_FILE, Object.fromEntries(SESSIONS));
+  } catch (e) {
+    console.error('Failed to persist sessions:', e);
+  }
+}
+
+loadSessions();
 
 function createSession(user) {
   const token = crypto.randomBytes(32).toString('hex');
@@ -133,10 +187,12 @@ function createSession(user) {
       email: user.email,
       role: user.role,
       name: user.name,
-      programmeIds: Array.isArray(user.programmeIds) ? user.programmeIds : []
+      programmeIds: Array.isArray(user.programmeIds) ? user.programmeIds : [],
+      mustChangePassword: !!user.mustChangePassword
     },
     expiresAt: Date.now() + SESSION_TTL_MS
   });
+  saveSessions();
   return token;
 }
 
@@ -148,6 +204,7 @@ function revokeSessionsFor(email, exceptToken = null) {
   for (const [token, session] of SESSIONS) {
     if (session.user.email.toLowerCase() === email && token !== exceptToken) SESSIONS.delete(token);
   }
+  saveSessions();
 }
 
 // Propagate name/role changes into live sessions so a demoted account
@@ -156,6 +213,7 @@ function updateSessionsFor(email, fields) {
   for (const session of SESSIONS.values()) {
     if (session.user.email.toLowerCase() === email) Object.assign(session.user, fields);
   }
+  saveSessions();
 }
 
 // In-memory login throttle: after too many failures for an IP+email pair
@@ -194,6 +252,22 @@ function recordLoginFailure(key) {
   }
 }
 
+// Periodic sweep of expired sessions and stale throttle entries. Both maps
+// are otherwise only pruned when a given entry is next touched, so tokens of
+// users who simply never return would accumulate for the life of the process.
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, session] of SESSIONS) {
+    if (now > session.expiresAt) SESSIONS.delete(token);
+  }
+  for (const [key, entry] of LOGIN_ATTEMPTS) {
+    if (now - entry.windowStart > LOGIN_WINDOW_MS) LOGIN_ATTEMPTS.delete(key);
+  }
+  // Also captures the sliding-expiry updates made on each request, so a
+  // restart loses at most this interval's worth of session extension.
+  saveSessions();
+}, 15 * 60 * 1000).unref();
+
 // Null-prototype store so emails can never collide with Object.prototype
 // properties ("constructor", "__proto__", ...).
 let USERS = Object.create(null);
@@ -221,6 +295,9 @@ function buildDefaultUsers() {
     u.password = hashPasswordSync(u.password);
     u.createdAt = now;
     u.lastLogin = null;
+    // Seeded credentials are public knowledge (they ship in this repo), so
+    // each account must set its own password before it can use the app.
+    u.mustChangePassword = true;
   });
   return defaults;
 }
@@ -255,7 +332,7 @@ function loadUsers() {
 }
 
 function saveUsers() {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(USERS, null, 2), 'utf8');
+  writeJsonAtomic(USERS_FILE, USERS);
 }
 
 loadUsers();
@@ -278,6 +355,17 @@ function authenticate(req, res, next) {
   }
   session.expiresAt = Date.now() + SESSION_TTL_MS; // sliding expiry
   req.user = session.user;
+  // Accounts on a provisional password (seeded defaults, admin resets,
+  // generated temp passwords) may only complete the rotation: everything
+  // except the rotation flow itself is blocked server-side, so a known
+  // default credential is useless for reading or changing data.
+  if (session.user.mustChangePassword &&
+      !['/api/me', '/api/me/password', '/api/logout'].includes(req.path)) {
+    return res.status(403).json({
+      error: 'You must change your password before continuing.',
+      mustChangePassword: true
+    });
+  }
   next();
 }
 
@@ -354,11 +442,12 @@ function addScenarioToProgramme(programmeId, scenarioId) {
   if (!isValidId(programmeId)) return;
   const pPath = path.join(PROGRAMMES_DIR, `${programmeId}.json`);
   if (!fs.existsSync(pPath)) return;
-  const prog = JSON.parse(fs.readFileSync(pPath, 'utf8'));
+  const prog = readJsonSafe(pPath);
+  if (!prog) return; // unreadable programme file; don't fail the create
   if (!Array.isArray(prog.scenarioIds)) prog.scenarioIds = [];
   if (!prog.scenarioIds.includes(scenarioId)) {
     prog.scenarioIds.push(scenarioId);
-    fs.writeFileSync(pPath, JSON.stringify(prog, null, 2), 'utf8');
+    writeJsonAtomic(pPath, prog);
   }
 }
 
@@ -422,7 +511,8 @@ app.post('/api/login', async (req, res) => {
         email: user.email,
         role: user.role,
         name: user.name,
-        programmeIds: editorProgrammeIds(user)
+        programmeIds: editorProgrammeIds(user),
+        mustChangePassword: !!user.mustChangePassword
       }
     });
   } catch (err) {
@@ -477,11 +567,14 @@ app.post('/api/me/password', authenticate, async (req, res) => {
     }
 
     user.password = await hashPassword(newPassword);
+    // The account now runs on a password only its owner knows.
+    delete user.mustChangePassword;
     saveUsers();
 
     // Preserve this session, drop all others for the account.
     const currentToken = req.headers['authorization'].split(' ')[1];
     revokeSessionsFor(email, currentToken);
+    updateSessionsFor(email, { mustChangePassword: false });
 
     res.json({ success: true });
   } catch (err) {
@@ -498,9 +591,9 @@ app.get('/api/scenarios', authenticate, (req, res) => {
     const files = fs.readdirSync(SCENARIOS_DIR);
     const scenarios = files
       .filter(file => file.endsWith('.json'))
-      .map(file => {
-        const filePath = path.join(SCENARIOS_DIR, file);
-        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      .map(file => readJsonSafe(path.join(SCENARIOS_DIR, file)))
+      .filter(Boolean)
+      .map(data => {
         // Return summary info
         return {
           id: data.id,
@@ -587,7 +680,7 @@ app.post('/api/scenarios', authenticate, (req, res) => {
   }
 
   try {
-    fs.writeFileSync(filePath, JSON.stringify(scenario, null, 2), 'utf8');
+    writeJsonAtomic(filePath, scenario);
     if (targetProgrammeId) addScenarioToProgramme(targetProgrammeId, scenario.id);
     res.status(201).json(scenario);
   } catch (err) {
@@ -612,7 +705,7 @@ app.put('/api/scenarios/:id', authenticate, requireScenarioAccess, (req, res) =>
   scenario.id = scenarioId; // Ensure ID matches
 
   try {
-    fs.writeFileSync(filePath, JSON.stringify(scenario, null, 2), 'utf8');
+    writeJsonAtomic(filePath, scenario);
     res.json(scenario);
   } catch (err) {
     res.status(500).json({ error: 'Failed to update scenario file: ' + err.message });
@@ -636,17 +729,19 @@ app.delete('/api/scenarios/:id', authenticate, requireScenarioAccess, (req, res)
     const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     data.deletedAt = new Date().toISOString();
 
-    fs.writeFileSync(binPath, JSON.stringify(data, null, 2), 'utf8');
+    writeJsonAtomic(binPath, data);
     fs.unlinkSync(filePath);
-    
-    // Also remove scenario from any programmes
+
+    // Also remove scenario from any programmes. Per-file failures are logged
+    // and skipped: the scenario has already moved to the recycle bin, so one
+    // unreadable programme file must not turn a completed delete into a 500.
     const progFiles = fs.readdirSync(PROGRAMMES_DIR);
     progFiles.filter(file => file.endsWith('.json')).forEach(file => {
       const pPath = path.join(PROGRAMMES_DIR, file);
-      const prog = JSON.parse(fs.readFileSync(pPath, 'utf8'));
-      if (prog.scenarioIds && prog.scenarioIds.includes(scenarioId)) {
+      const prog = readJsonSafe(pPath);
+      if (prog && prog.scenarioIds && prog.scenarioIds.includes(scenarioId)) {
         prog.scenarioIds = prog.scenarioIds.filter(id => id !== scenarioId);
-        fs.writeFileSync(pPath, JSON.stringify(prog, null, 2), 'utf8');
+        writeJsonAtomic(pPath, prog);
       }
     });
 
@@ -665,10 +760,8 @@ app.get('/api/programmes', authenticate, (req, res) => {
     const files = fs.readdirSync(PROGRAMMES_DIR);
     const programmes = files
       .filter(file => file.endsWith('.json'))
-      .map(file => {
-        const filePath = path.join(PROGRAMMES_DIR, file);
-        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      });
+      .map(file => readJsonSafe(path.join(PROGRAMMES_DIR, file)))
+      .filter(Boolean);
     res.json(programmes);
   } catch (err) {
     res.status(500).json({ error: 'Failed to retrieve programmes: ' + err.message });
@@ -694,7 +787,7 @@ app.post('/api/programmes', authenticate, requireAdmin, (req, res) => {
   const filePath = path.join(PROGRAMMES_DIR, `${prog.id}.json`);
 
   try {
-    fs.writeFileSync(filePath, JSON.stringify(prog, null, 2), 'utf8');
+    writeJsonAtomic(filePath, prog);
     res.status(201).json(prog);
   } catch (err) {
     res.status(500).json({ error: 'Failed to create programme: ' + err.message });
@@ -717,7 +810,7 @@ app.put('/api/programmes/:id', authenticate, requireAdmin, (req, res) => {
   prog.id = progId; // Ensure ID matches
 
   try {
-    fs.writeFileSync(filePath, JSON.stringify(prog, null, 2), 'utf8');
+    writeJsonAtomic(filePath, prog);
     res.json(prog);
   } catch (err) {
     res.status(500).json({ error: 'Failed to update programme: ' + err.message });
@@ -788,6 +881,9 @@ app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
     name: String(name),
     createdAt: new Date().toISOString(),
     lastLogin: null,
+    // Admin-provisioned passwords are provisional: the owner must set their
+    // own at first sign-in before the account can do anything else.
+    mustChangePassword: true,
     // Allocations only apply to Editors; ignored (empty) for other roles.
     programmeIds: role === 'Editor' ? sanitizeProgrammeIds(req.body.programmeIds) : []
   };
@@ -832,8 +928,16 @@ app.put('/api/users/:email', authenticate, requireAdmin, async (req, res) => {
   // Re-derive allocations from the request; clear them entirely if the user is
   // no longer an Editor so stale grants can't linger.
   USERS[targetEmail].programmeIds = role === 'Editor' ? sanitizeProgrammeIds(req.body.programmeIds) : [];
+  const isSelfUpdate = targetEmail === req.user.email.toLowerCase();
   if (password) {
     USERS[targetEmail].password = await hashPassword(password);
+    // An admin-reset password is provisional (the admin knows it), so the
+    // owner must rotate it at next sign-in and any live sessions the old
+    // password opened are revoked. Self-resets are a normal password change.
+    if (!isSelfUpdate) {
+      USERS[targetEmail].mustChangePassword = true;
+      revokeSessionsFor(targetEmail);
+    }
   }
 
   try {
@@ -1017,6 +1121,9 @@ app.post('/api/users/bulk-create', authenticate, requireAdmin, async (req, res) 
         name,
         createdAt: new Date().toISOString(),
         lastLogin: null,
+        // Whether generated or supplied, the password came from an admin,
+        // so the owner must set their own at first sign-in.
+        mustChangePassword: true,
         // Programme allocations can't be expressed in the paste format; an
         // admin assigns them afterwards via the edit modal.
         programmeIds: []
@@ -1041,9 +1148,9 @@ app.get('/api/recycle-bin', authenticate, requireAdmin, (req, res) => {
     const files = fs.readdirSync(RECYCLE_BIN_DIR);
     const scenarios = files
       .filter(file => file.endsWith('.json'))
-      .map(file => {
-        const filePath = path.join(RECYCLE_BIN_DIR, file);
-        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      .map(file => readJsonSafe(path.join(RECYCLE_BIN_DIR, file)))
+      .filter(Boolean)
+      .map(data => {
         return {
           id: data.id,
           code: data.code,
@@ -1076,7 +1183,7 @@ app.post('/api/recycle-bin/:id/restore', authenticate, requireAdmin, (req, res) 
     const data = JSON.parse(fs.readFileSync(binPath, 'utf8'));
     delete data.deletedAt;
 
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    writeJsonAtomic(filePath, data);
     fs.unlinkSync(binPath);
 
     res.json({ success: true, restored: true });
@@ -1114,10 +1221,8 @@ app.get('/api/backup/export', authenticate, requireAdmin, (req, res) => {
     const files = fs.readdirSync(SCENARIOS_DIR);
     const scenarios = files
       .filter(file => file.endsWith('.json'))
-      .map(file => {
-        const filePath = path.join(SCENARIOS_DIR, file);
-        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      });
+      .map(file => readJsonSafe(path.join(SCENARIOS_DIR, file)))
+      .filter(Boolean);
 
     const backup = {
       source: 'SimHub',
@@ -1154,7 +1259,7 @@ app.post('/api/backup/import', authenticate, requireAdmin, (req, res) => {
           return;
         }
         const filePath = path.join(SCENARIOS_DIR, `${scenario.id}.json`);
-        fs.writeFileSync(filePath, JSON.stringify(scenario, null, 2), 'utf8');
+        writeJsonAtomic(filePath, scenario);
         importCount++;
       }
     });
@@ -1173,6 +1278,19 @@ app.get('*', (req, res) => {
     return res.status(404).json({ error: 'API endpoint not found.' });
   }
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Error handler of last resort. Without this, body-parser failures (invalid
+// JSON, oversized payloads) fall through to Express's default handler, which
+// responds with an HTML page — and includes a stack trace outside production.
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  const status = err.status || err.statusCode || 500;
+  if (status >= 500) console.error('Unhandled request error:', err);
+  const message = status >= 500 ? 'Internal server error.'
+    : err.type === 'entity.too.large' ? 'Request body too large.'
+    : 'Invalid request body.';
+  res.status(status).json({ error: message });
 });
 
 app.listen(PORT, () => {

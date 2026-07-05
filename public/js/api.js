@@ -1,6 +1,10 @@
 const api = {
   token: localStorage.getItem('simhub_token') || null,
-  user: JSON.parse(localStorage.getItem('simhub_user')) || null,
+  // Corrupted storage must not throw at script load and brick the whole app.
+  user: (() => {
+    try { return JSON.parse(localStorage.getItem('simhub_user')) || null; }
+    catch { return null; }
+  })(),
 
   async request(url, options = {}) {
     const headers = {
@@ -164,15 +168,17 @@ const api = {
     });
   },
 
+  // Emails may contain characters with URL meaning (%, #, ?), so the path
+  // segment must be encoded or the request targets the wrong resource.
   async updateUser(email, user) {
-    return this.request(`/api/users/${email}`, {
+    return this.request(`/api/users/${encodeURIComponent(email)}`, {
       method: 'PUT',
       body: JSON.stringify(user)
     });
   },
 
   async deleteUser(email) {
-    return this.request(`/api/users/${email}`, {
+    return this.request(`/api/users/${encodeURIComponent(email)}`, {
       method: 'DELETE'
     });
   },

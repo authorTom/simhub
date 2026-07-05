@@ -92,12 +92,23 @@ Here is a visual overview of SimHub's premium interface and high-fidelity simula
 
 ## 🔐 Predefined User Roles
 
-SimHub comes with two pre-configured faculty accounts for clinical training teams:
+SimHub seeds two faculty accounts on first boot so you can sign in:
 
-| User Role | Preconfigured Email | Password | Allowed Operations |
+| User Role | Preconfigured Email | Initial Password | Allowed Operations |
 | :--- | :--- | :--- | :--- |
 | **Admin** | `admin@simhub.local` | `admin123` | Full access. Create, edit, delete, view, run scenarios & programmes. |
 | **Clinical Faculty** | `faculty@simhub.local` | `faculty123` | Read-only. Catalog browse, detail sheet view, launch active HUD, view debriefs. Cannot save/delete. |
+
+These initial passwords are **provisional**: on first sign-in each account is required to set its own password before any other part of the app (or API) can be used. The same forced rotation applies to any account whose password was created or reset by an administrator, including bulk-generated temporary passwords.
+
+---
+
+## 🚀 Production Notes
+
+*   **Reverse proxy**: If SimHub runs behind nginx/Caddy/another proxy, start it with `TRUST_PROXY=1` (or the number of proxy hops) so login rate-limiting sees real client IPs. Leave it unset when clients connect directly.
+*   **Sessions survive restarts**: Active sign-ins are persisted in `data/sessions.json`, so a redeploy does not log everyone out.
+*   **Protect the `data/` directory**: It holds password hashes and session tokens. It is never web-served, but ensure filesystem permissions restrict it to the service user, and include it in backups.
+*   **Use HTTPS**: Terminate TLS at your proxy; the bearer-token auth assumes an encrypted transport.
 
 ---
 
