@@ -282,8 +282,13 @@ const components = {
     const grid = document.getElementById('programmes-grid');
     if (!grid) return;
 
-    this.allProgrammes = await api.getProgrammes();
-    this.allScenarios = await api.getScenarios();
+    try {
+      this.allProgrammes = await api.getProgrammes();
+      this.allScenarios = await api.getScenarios();
+    } catch (err) {
+      app.showToast('Failed to load programmes: ' + err.message, 'error');
+      return;
+    }
 
     if (this.allProgrammes.length === 0) {
       grid.innerHTML = `
@@ -2617,7 +2622,7 @@ const components = {
             <div style="border-top:1px solid var(--glass-border); padding-top:16px; margin-top:16px;">
               <!-- Tabbed lists of Equipment / Medications -->
               <div style="display:flex; gap:6px; margin-bottom:12px;">
-                <button class="btn btn-secondary" onclick="components.toggleHudRightList('hud-list-equip', this)" style="flex:1; padding:4px 8px; font-size:0.75rem;" class="active">Equipment</button>
+                <button class="btn btn-secondary" onclick="components.toggleHudRightList('hud-list-equip', this)" style="flex:1; padding:4px 8px; font-size:0.75rem;">Equipment</button>
                 <button class="btn btn-secondary" onclick="components.toggleHudRightList('hud-list-meds', this)" style="flex:1; padding:4px 8px; font-size:0.75rem;">Meds</button>
                 <button class="btn btn-secondary" onclick="components.toggleHudRightList('hud-list-confed', this)" style="flex:1; padding:4px 8px; font-size:0.75rem;">SP Scripts</button>
               </div>

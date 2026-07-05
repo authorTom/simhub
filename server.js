@@ -103,6 +103,27 @@ const RECYCLE_BIN_DIR = path.join(DATA_DIR, 'recycle_bin');
   }
 });
 
+// Read + parse a JSON file, returning null instead of throwing when the file
+// is missing or corrupt. One damaged file must never take down a whole
+// listing endpoint; callers skip null entries.
+function readJsonSafe(filePath) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (e) {
+    console.error(`Skipping unreadable JSON file ${filePath}: ${e.message}`);
+    return null;
+  }
+}
+
+// Crash-safe JSON write: write to a temp file in the same directory, then
+// rename over the target. A crash mid-write can then never leave a
+// half-written (corrupt) file behind.
+function writeJsonAtomic(filePath, data) {
+  const tmp = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+  fs.renameSync(tmp, filePath);
+}
+
 // Middleware
 
 // Baseline security headers on every response.
@@ -194,6 +215,19 @@ function recordLoginFailure(key) {
   }
 }
 
+// Periodic sweep of expired sessions and stale throttle entries. Both maps
+// are otherwise only pruned when a given entry is next touched, so tokens of
+// users who simply never return would accumulate for the life of the process.
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, session] of SESSIONS) {
+    if (now > session.expiresAt) SESSIONS.delete(token);
+  }
+  for (const [key, entry] of LOGIN_ATTEMPTS) {
+    if (now - entry.windowStart > LOGIN_WINDOW_MS) LOGIN_ATTEMPTS.delete(key);
+  }
+}, 15 * 60 * 1000).unref();
+
 // Null-prototype store so emails can never collide with Object.prototype
 // properties ("constructor", "__proto__", ...).
 let USERS = Object.create(null);
@@ -255,7 +289,7 @@ function loadUsers() {
 }
 
 function saveUsers() {
-  fs.writeFileSync(USERS_FILE, JSON.stringify(USERS, null, 2), 'utf8');
+  writeJsonAtomic(USERS_FILE, USERS);
 }
 
 loadUsers();
@@ -354,11 +388,12 @@ function addScenarioToProgramme(programmeId, scenarioId) {
   if (!isValidId(programmeId)) return;
   const pPath = path.join(PROGRAMMES_DIR, `${programmeId}.json`);
   if (!fs.existsSync(pPath)) return;
-  const prog = JSON.parse(fs.readFileSync(pPath, 'utf8'));
+  const prog = readJsonSafe(pPath);
+  if (!prog) return; // unreadable programme file; don't fail the create
   if (!Array.isArray(prog.scenarioIds)) prog.scenarioIds = [];
   if (!prog.scenarioIds.includes(scenarioId)) {
     prog.scenarioIds.push(scenarioId);
-    fs.writeFileSync(pPath, JSON.stringify(prog, null, 2), 'utf8');
+    writeJsonAtomic(pPath, prog);
   }
 }
 
@@ -498,9 +533,9 @@ app.get('/api/scenarios', authenticate, (req, res) => {
     const files = fs.readdirSync(SCENARIOS_DIR);
     const scenarios = files
       .filter(file => file.endsWith('.json'))
-      .map(file => {
-        const filePath = path.join(SCENARIOS_DIR, file);
-        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      .map(file => readJsonSafe(path.join(SCENARIOS_DIR, file)))
+      .filter(Boolean)
+      .map(data => {
         // Return summary info
         return {
           id: data.id,
@@ -587,7 +622,7 @@ app.post('/api/scenarios', authenticate, (req, res) => {
   }
 
   try {
-    fs.writeFileSync(filePath, JSON.stringify(scenario, null, 2), 'utf8');
+    writeJsonAtomic(filePath, scenario);
     if (targetProgrammeId) addScenarioToProgramme(targetProgrammeId, scenario.id);
     res.status(201).json(scenario);
   } catch (err) {
@@ -612,7 +647,7 @@ app.put('/api/scenarios/:id', authenticate, requireScenarioAccess, (req, res) =>
   scenario.id = scenarioId; // Ensure ID matches
 
   try {
-    fs.writeFileSync(filePath, JSON.stringify(scenario, null, 2), 'utf8');
+    writeJsonAtomic(filePath, scenario);
     res.json(scenario);
   } catch (err) {
     res.status(500).json({ error: 'Failed to update scenario file: ' + err.message });
@@ -636,17 +671,19 @@ app.delete('/api/scenarios/:id', authenticate, requireScenarioAccess, (req, res)
     const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     data.deletedAt = new Date().toISOString();
 
-    fs.writeFileSync(binPath, JSON.stringify(data, null, 2), 'utf8');
+    writeJsonAtomic(binPath, data);
     fs.unlinkSync(filePath);
-    
-    // Also remove scenario from any programmes
+
+    // Also remove scenario from any programmes. Per-file failures are logged
+    // and skipped: the scenario has already moved to the recycle bin, so one
+    // unreadable programme file must not turn a completed delete into a 500.
     const progFiles = fs.readdirSync(PROGRAMMES_DIR);
     progFiles.filter(file => file.endsWith('.json')).forEach(file => {
       const pPath = path.join(PROGRAMMES_DIR, file);
-      const prog = JSON.parse(fs.readFileSync(pPath, 'utf8'));
-      if (prog.scenarioIds && prog.scenarioIds.includes(scenarioId)) {
+      const prog = readJsonSafe(pPath);
+      if (prog && prog.scenarioIds && prog.scenarioIds.includes(scenarioId)) {
         prog.scenarioIds = prog.scenarioIds.filter(id => id !== scenarioId);
-        fs.writeFileSync(pPath, JSON.stringify(prog, null, 2), 'utf8');
+        writeJsonAtomic(pPath, prog);
       }
     });
 
@@ -665,10 +702,8 @@ app.get('/api/programmes', authenticate, (req, res) => {
     const files = fs.readdirSync(PROGRAMMES_DIR);
     const programmes = files
       .filter(file => file.endsWith('.json'))
-      .map(file => {
-        const filePath = path.join(PROGRAMMES_DIR, file);
-        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      });
+      .map(file => readJsonSafe(path.join(PROGRAMMES_DIR, file)))
+      .filter(Boolean);
     res.json(programmes);
   } catch (err) {
     res.status(500).json({ error: 'Failed to retrieve programmes: ' + err.message });
@@ -694,7 +729,7 @@ app.post('/api/programmes', authenticate, requireAdmin, (req, res) => {
   const filePath = path.join(PROGRAMMES_DIR, `${prog.id}.json`);
 
   try {
-    fs.writeFileSync(filePath, JSON.stringify(prog, null, 2), 'utf8');
+    writeJsonAtomic(filePath, prog);
     res.status(201).json(prog);
   } catch (err) {
     res.status(500).json({ error: 'Failed to create programme: ' + err.message });
@@ -717,7 +752,7 @@ app.put('/api/programmes/:id', authenticate, requireAdmin, (req, res) => {
   prog.id = progId; // Ensure ID matches
 
   try {
-    fs.writeFileSync(filePath, JSON.stringify(prog, null, 2), 'utf8');
+    writeJsonAtomic(filePath, prog);
     res.json(prog);
   } catch (err) {
     res.status(500).json({ error: 'Failed to update programme: ' + err.message });
@@ -1041,9 +1076,9 @@ app.get('/api/recycle-bin', authenticate, requireAdmin, (req, res) => {
     const files = fs.readdirSync(RECYCLE_BIN_DIR);
     const scenarios = files
       .filter(file => file.endsWith('.json'))
-      .map(file => {
-        const filePath = path.join(RECYCLE_BIN_DIR, file);
-        const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      .map(file => readJsonSafe(path.join(RECYCLE_BIN_DIR, file)))
+      .filter(Boolean)
+      .map(data => {
         return {
           id: data.id,
           code: data.code,
@@ -1076,7 +1111,7 @@ app.post('/api/recycle-bin/:id/restore', authenticate, requireAdmin, (req, res) 
     const data = JSON.parse(fs.readFileSync(binPath, 'utf8'));
     delete data.deletedAt;
 
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    writeJsonAtomic(filePath, data);
     fs.unlinkSync(binPath);
 
     res.json({ success: true, restored: true });
@@ -1114,10 +1149,8 @@ app.get('/api/backup/export', authenticate, requireAdmin, (req, res) => {
     const files = fs.readdirSync(SCENARIOS_DIR);
     const scenarios = files
       .filter(file => file.endsWith('.json'))
-      .map(file => {
-        const filePath = path.join(SCENARIOS_DIR, file);
-        return JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      });
+      .map(file => readJsonSafe(path.join(SCENARIOS_DIR, file)))
+      .filter(Boolean);
 
     const backup = {
       source: 'SimHub',
@@ -1154,7 +1187,7 @@ app.post('/api/backup/import', authenticate, requireAdmin, (req, res) => {
           return;
         }
         const filePath = path.join(SCENARIOS_DIR, `${scenario.id}.json`);
-        fs.writeFileSync(filePath, JSON.stringify(scenario, null, 2), 'utf8');
+        writeJsonAtomic(filePath, scenario);
         importCount++;
       }
     });
@@ -1173,6 +1206,19 @@ app.get('*', (req, res) => {
     return res.status(404).json({ error: 'API endpoint not found.' });
   }
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// Error handler of last resort. Without this, body-parser failures (invalid
+// JSON, oversized payloads) fall through to Express's default handler, which
+// responds with an HTML page — and includes a stack trace outside production.
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  const status = err.status || err.statusCode || 500;
+  if (status >= 500) console.error('Unhandled request error:', err);
+  const message = status >= 500 ? 'Internal server error.'
+    : err.type === 'entity.too.large' ? 'Request body too large.'
+    : 'Invalid request body.';
+  res.status(status).json({ error: message });
 });
 
 app.listen(PORT, () => {
