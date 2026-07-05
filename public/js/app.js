@@ -115,6 +115,15 @@ const app = {
     // Apply role-based visibility restrictions across DOM
     this.applyRoleRestrictions();
 
+    // Accounts on a provisional password (seeded default, admin reset or
+    // generated temp password) must rotate it first. The server rejects all
+    // other API calls until then, so defer loading the app: the modal's
+    // success handler boots components and navigates instead.
+    if (user.mustChangePassword) {
+      components.openChangePasswordModal(true);
+      return;
+    }
+
     // Boot Components
     components.init();
 

@@ -3680,20 +3680,32 @@ const components = {
 
   // --- SELF-SERVICE PASSWORD CHANGE ---
 
-  openChangePasswordModal() {
+  // forced=true is the first-login rotation: the account is on a provisional
+  // password and the server blocks every other API call until it is changed,
+  // so the modal offers no cancel/close route.
+  openChangePasswordModal(forced = false) {
     const modal = document.getElementById('modal-container');
     const modalContent = document.getElementById('modal-card');
     if (!modal || !modalContent) return;
 
+    this._forcedPasswordChange = forced;
+
     modalContent.innerHTML = `
       <div class="flex-between m-b-20" style="margin-bottom: 20px;">
         <h3 style="font-size:1.3rem; color: var(--accent-blue);">
-          <i class="fa-solid fa-key"></i> Change Your Password
+          <i class="fa-solid fa-key"></i> ${forced ? 'Set a New Password' : 'Change Your Password'}
         </h3>
+        ${forced ? '' : `
         <button onclick="components.closeModal()" style="background:transparent; border:none; color:var(--text-secondary); cursor:pointer; font-size:1.2rem;">
           <i class="fa-solid fa-xmark"></i>
-        </button>
+        </button>`}
       </div>
+
+      ${forced ? `
+      <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:16px;">
+        <i class="fa-solid fa-shield-halved" style="color:var(--accent-amber);"></i>
+        Your account is using a provisional password. Choose your own password to continue.
+      </p>` : ''}
 
       <form id="change-password-form">
         <div class="form-group">
@@ -3715,9 +3727,9 @@ const components = {
         </div>
 
         <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:24px;">
-          <button type="button" class="btn btn-secondary" onclick="components.closeModal()">Cancel</button>
+          ${forced ? '' : '<button type="button" class="btn btn-secondary" onclick="components.closeModal()">Cancel</button>'}
           <button type="submit" class="btn btn-emerald">
-            <i class="fa-solid fa-floppy-disk"></i> Update Password
+            <i class="fa-solid fa-floppy-disk"></i> ${forced ? 'Set Password & Continue' : 'Update Password'}
           </button>
         </div>
       </form>
@@ -3768,6 +3780,18 @@ const components = {
       await api.changeOwnPassword(currentPassword, newPassword);
       this.closeModal();
       app.showToast('Your password has been changed successfully.', 'success');
+
+      // Completing a forced first-login rotation unblocks the rest of the
+      // API, so boot the app now (onLoginSuccess deferred it).
+      if (this._forcedPasswordChange) {
+        this._forcedPasswordChange = false;
+        if (api.user) {
+          api.user.mustChangePassword = false;
+          localStorage.setItem('simhub_user', JSON.stringify(api.user));
+        }
+        this.init();
+        app.navigate('dashboard');
+      }
     } catch (err) {
       app.showToast(err.message, 'error');
     }

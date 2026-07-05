@@ -6,6 +6,14 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Set TRUST_PROXY=1 (or the number of proxy hops) when running behind a
+// reverse proxy (nginx, Caddy, ...) so req.ip reflects the real client for
+// login throttling rather than the proxy's address. Off by default because
+// trusting proxy headers without a proxy lets clients spoof their IP.
+if (process.env.TRUST_PROXY) {
+  app.set('trust proxy', Number(process.env.TRUST_PROXY) || 1);
+}
+
 // --- Security helpers ---
 
 // Promisified scrypt so password checks never block the event loop.
@@ -146,6 +154,31 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Simple Token-based Auth System
 const SESSIONS = new Map(); // token -> { user, expiresAt }
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours, refreshed on activity
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+
+// Sessions are persisted so a restart/deploy does not sign everyone out.
+// Tokens on disk carry the same sensitivity as users.json: the data
+// directory must not be web-served or world-readable.
+function loadSessions() {
+  const stored = fs.existsSync(SESSIONS_FILE) ? readJsonSafe(SESSIONS_FILE) : null;
+  if (!stored) return;
+  const now = Date.now();
+  for (const [token, session] of Object.entries(stored)) {
+    if (session && session.user && session.expiresAt > now) {
+      SESSIONS.set(token, session);
+    }
+  }
+}
+
+function saveSessions() {
+  try {
+    writeJsonAtomic(SESSIONS_FILE, Object.fromEntries(SESSIONS));
+  } catch (e) {
+    console.error('Failed to persist sessions:', e);
+  }
+}
+
+loadSessions();
 
 function createSession(user) {
   const token = crypto.randomBytes(32).toString('hex');
@@ -154,10 +187,12 @@ function createSession(user) {
       email: user.email,
       role: user.role,
       name: user.name,
-      programmeIds: Array.isArray(user.programmeIds) ? user.programmeIds : []
+      programmeIds: Array.isArray(user.programmeIds) ? user.programmeIds : [],
+      mustChangePassword: !!user.mustChangePassword
     },
     expiresAt: Date.now() + SESSION_TTL_MS
   });
+  saveSessions();
   return token;
 }
 
@@ -169,6 +204,7 @@ function revokeSessionsFor(email, exceptToken = null) {
   for (const [token, session] of SESSIONS) {
     if (session.user.email.toLowerCase() === email && token !== exceptToken) SESSIONS.delete(token);
   }
+  saveSessions();
 }
 
 // Propagate name/role changes into live sessions so a demoted account
@@ -177,6 +213,7 @@ function updateSessionsFor(email, fields) {
   for (const session of SESSIONS.values()) {
     if (session.user.email.toLowerCase() === email) Object.assign(session.user, fields);
   }
+  saveSessions();
 }
 
 // In-memory login throttle: after too many failures for an IP+email pair
@@ -226,6 +263,9 @@ setInterval(() => {
   for (const [key, entry] of LOGIN_ATTEMPTS) {
     if (now - entry.windowStart > LOGIN_WINDOW_MS) LOGIN_ATTEMPTS.delete(key);
   }
+  // Also captures the sliding-expiry updates made on each request, so a
+  // restart loses at most this interval's worth of session extension.
+  saveSessions();
 }, 15 * 60 * 1000).unref();
 
 // Null-prototype store so emails can never collide with Object.prototype
@@ -255,6 +295,9 @@ function buildDefaultUsers() {
     u.password = hashPasswordSync(u.password);
     u.createdAt = now;
     u.lastLogin = null;
+    // Seeded credentials are public knowledge (they ship in this repo), so
+    // each account must set its own password before it can use the app.
+    u.mustChangePassword = true;
   });
   return defaults;
 }
@@ -312,6 +355,17 @@ function authenticate(req, res, next) {
   }
   session.expiresAt = Date.now() + SESSION_TTL_MS; // sliding expiry
   req.user = session.user;
+  // Accounts on a provisional password (seeded defaults, admin resets,
+  // generated temp passwords) may only complete the rotation: everything
+  // except the rotation flow itself is blocked server-side, so a known
+  // default credential is useless for reading or changing data.
+  if (session.user.mustChangePassword &&
+      !['/api/me', '/api/me/password', '/api/logout'].includes(req.path)) {
+    return res.status(403).json({
+      error: 'You must change your password before continuing.',
+      mustChangePassword: true
+    });
+  }
   next();
 }
 
@@ -457,7 +511,8 @@ app.post('/api/login', async (req, res) => {
         email: user.email,
         role: user.role,
         name: user.name,
-        programmeIds: editorProgrammeIds(user)
+        programmeIds: editorProgrammeIds(user),
+        mustChangePassword: !!user.mustChangePassword
       }
     });
   } catch (err) {
@@ -512,11 +567,14 @@ app.post('/api/me/password', authenticate, async (req, res) => {
     }
 
     user.password = await hashPassword(newPassword);
+    // The account now runs on a password only its owner knows.
+    delete user.mustChangePassword;
     saveUsers();
 
     // Preserve this session, drop all others for the account.
     const currentToken = req.headers['authorization'].split(' ')[1];
     revokeSessionsFor(email, currentToken);
+    updateSessionsFor(email, { mustChangePassword: false });
 
     res.json({ success: true });
   } catch (err) {
@@ -823,6 +881,9 @@ app.post('/api/users', authenticate, requireAdmin, async (req, res) => {
     name: String(name),
     createdAt: new Date().toISOString(),
     lastLogin: null,
+    // Admin-provisioned passwords are provisional: the owner must set their
+    // own at first sign-in before the account can do anything else.
+    mustChangePassword: true,
     // Allocations only apply to Editors; ignored (empty) for other roles.
     programmeIds: role === 'Editor' ? sanitizeProgrammeIds(req.body.programmeIds) : []
   };
@@ -867,8 +928,16 @@ app.put('/api/users/:email', authenticate, requireAdmin, async (req, res) => {
   // Re-derive allocations from the request; clear them entirely if the user is
   // no longer an Editor so stale grants can't linger.
   USERS[targetEmail].programmeIds = role === 'Editor' ? sanitizeProgrammeIds(req.body.programmeIds) : [];
+  const isSelfUpdate = targetEmail === req.user.email.toLowerCase();
   if (password) {
     USERS[targetEmail].password = await hashPassword(password);
+    // An admin-reset password is provisional (the admin knows it), so the
+    // owner must rotate it at next sign-in and any live sessions the old
+    // password opened are revoked. Self-resets are a normal password change.
+    if (!isSelfUpdate) {
+      USERS[targetEmail].mustChangePassword = true;
+      revokeSessionsFor(targetEmail);
+    }
   }
 
   try {
@@ -1052,6 +1121,9 @@ app.post('/api/users/bulk-create', authenticate, requireAdmin, async (req, res) 
         name,
         createdAt: new Date().toISOString(),
         lastLogin: null,
+        // Whether generated or supplied, the password came from an admin,
+        // so the owner must set their own at first sign-in.
+        mustChangePassword: true,
         // Programme allocations can't be expressed in the paste format; an
         // admin assigns them afterwards via the edit modal.
         programmeIds: []
