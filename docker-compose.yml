@@ -1,0 +1,30 @@
+# SimHub — departmental deployment.
+#
+#   docker compose up -d          start (pulls the published image)
+#   docker compose pull && docker compose up -d      update to latest
+#   docker compose exec simhub node seed.js          load the example scenario
+#
+# To build from local source instead of pulling the published image,
+# comment out `image:` and uncomment `build: .`
+
+services:
+  simhub:
+    image: ghcr.io/authortom/simhub:latest
+    # build: .
+    container_name: simhub
+    restart: unless-stopped
+    ports:
+      # host:container — change the left side to serve on a different port
+      - "3000:3000"
+    volumes:
+      # All scenarios, programmes, users and sessions live here.
+      # A named volume survives image updates; back it up regularly.
+      - simhub-data:/app/data
+    environment:
+      # Uncomment when running behind a reverse proxy (nginx, Caddy, Traefik)
+      # so login rate-limiting sees real client IPs:
+      # TRUST_PROXY: "1"
+      NODE_ENV: production
+
+volumes:
+  simhub-data:

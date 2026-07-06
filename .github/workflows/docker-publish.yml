@@ -1,0 +1,72 @@
+# Builds the SimHub container and publishes it to GitHub Container Registry
+# (ghcr.io) on every push to main, and with a version tag when a release tag
+# (v*) is pushed. Pull requests build the image (a smoke check) but do not
+# publish it.
+#
+# No secrets to configure: GITHUB_TOKEN is provided automatically.
+
+name: Publish Docker image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  # ghcr requires a lowercase image name
+  IMAGE_NAME: ghcr.io/authortom/simhub
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Emulation + buildx enable multi-architecture images, so the same tag
+      # runs on ordinary x86 servers and ARM boxes (Apple Silicon, Raspberry Pi).
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # latest        -> every push to main
+      # v1.2.3 / 1.2  -> release tags
+      # sha-<commit>  -> immutable reference for rollbacks
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

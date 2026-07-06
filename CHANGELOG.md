@@ -4,6 +4,15 @@ All notable changes to SimHub are documented in this file, newest first.
 
 ---
 
+## [2026-07-06] - Docker Distribution
+
+*   **Official Container Image**: New `Dockerfile` producing a small (~60 MB) production image on `node:20-alpine` — production dependencies only, runs as the unprivileged `node` user, persistent data isolated in a `/app/data` volume, built-in Docker `HEALTHCHECK`, and `node server.js` as PID 1 so shutdown signals reach the app.
+*   **Docker Compose Recipe**: Ready-made `docker-compose.yml` for departmental deployments (named data volume, restart policy, `TRUST_PROXY` toggle, one-line update flow).
+*   **Automated Publishing**: GitHub Actions workflow builds and pushes multi-architecture (amd64 + arm64) images to GitHub Container Registry on every push to `main` — tagged `latest`, `sha-<commit>` for pinning/rollback, and semver tags on `v*` releases. Pull requests build the image as a smoke check without publishing.
+*   **Health Endpoint**: New unauthenticated `GET /api/health` liveness probe for containers, orchestrators and uptime monitors.
+*   **Graceful Shutdown**: On `SIGTERM`/`SIGINT` the server flushes session state, stops accepting connections, and exits once in-flight requests drain (with a 5-second hard-stop safety net) — so container stops and restarts never lose data.
+*   **Docs**: README gains a "Deploy with Docker" section (quick start, compose, volume backups, update and rollback guidance, registry/tagging reference).
+
 ## [2026-07-05] - Production Hardening
 
 *   **Forced First-Login Password Rotation**: Provisional passwords — the seeded default accounts, admin-created accounts, admin password resets, and bulk-generated temporary passwords — must now be changed at first sign-in. Enforcement is server-side: every API call except the rotation flow itself is rejected until the owner sets their own password, so a known default credential cannot be used to read or change data. The UI presents a dedicated, non-dismissable "Set a New Password" modal and only loads the app once the rotation completes.

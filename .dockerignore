@@ -1,0 +1,30 @@
+# Never bake local state or secrets into the image
+data/
+.env*
+node_modules/
+
+# VCS, CI and tooling metadata
+.git/
+.github/
+.claude/
+.vscode/
+.idea/
+
+# Docs, tests and dev-only scripts (not needed at runtime)
+*.md
+LICENSE
+test-qa.js
+test-ui-save.js
+capture-screenshots.js
+scenario_template.md
+Clinical-Simulation-Scenario-Master-Template.docx
+public/screenshots/
+
+# Docker artefacts themselves
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# OS noise
+.DS_Store
+Thumbs.db

@@ -63,7 +63,12 @@ Honesty helps you evaluate. SimHub does not currently do: manikin/hardware contr
 
 ## 🚀 Getting started (about 10 minutes)
 
-You do not need to be a developer. If you can install a program and copy a few commands into a terminal, you can run SimHub. There is no database server to set up and no build step — one small dependency and it runs.
+There are two ways to run SimHub:
+
+*   **Directly with Node.js** (below) — the quickest way to try it out on your own machine or a test environment.
+*   **As a Docker container** (see [Deploy with Docker](#-deploy-with-docker)) — the recommended way to run it for a department: a small, self-contained image with your data kept safely in a volume.
+
+You do not need to be a developer for either. If you can install a program and copy a few commands into a terminal, you can run SimHub. There is no database server to set up and no build step — one small dependency and it runs.
 
 ### 1. Install Node.js
 
@@ -117,14 +122,91 @@ These initial passwords are **provisional**: each account must set its own passw
 
 ---
 
+## 🐳 Deploy with Docker
+
+The published container image is the easiest way to run SimHub reliably on a departmental server, a NAS, or even a Raspberry Pi (it is built for both x86 and ARM). It is small (~60 MB), runs as an unprivileged user, reports its own health, and shuts down gracefully so no data is lost on restarts.
+
+### Prerequisite
+
+[Docker](https://docs.docker.com/get-docker/) (Docker Desktop on Windows/macOS, Docker Engine on Linux).
+
+### Quick start — one command
+
+```bash
+docker run -d --name simhub \
+  -p 3000:3000 \
+  -v simhub-data:/app/data \
+  --restart unless-stopped \
+  ghcr.io/authortom/simhub:latest
+```
+
+Open **http://localhost:3000**, sign in with the seeded accounts (see [First sign-in](#first-sign-in)), and optionally load the worked example scenario:
+
+```bash
+docker exec simhub node seed.js
+```
+
+### Recommended — Docker Compose
+
+The repository ships a ready-made [docker-compose.yml](docker-compose.yml). Copy it (or clone the repo) onto the server, then:
+
+```bash
+docker compose up -d                     # start
+docker compose exec simhub node seed.js  # optional: load the example scenario
+docker compose logs -f simhub            # watch the logs
+```
+
+Compose gives you a declarative record of your deployment (port, volume, environment) that you can keep in your team's documentation. Uncomment `TRUST_PROXY: "1"` in the file when running behind a reverse proxy.
+
+### Your data lives in the volume
+
+All scenarios, programmes, users, and sessions are stored in the `simhub-data` named volume — **the container itself is disposable**. You can delete and recreate the container (or update the image) without losing anything. Back the volume up either with the in-app Admin **Export** button, or at the infrastructure level:
+
+```bash
+docker run --rm -v simhub-data:/data -v "$PWD":/backup alpine \
+  tar czf /backup/simhub-data-backup.tar.gz -C /data .
+```
+
+### Updating to a new version
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+That's it — the new container starts against the same data volume, and persisted sessions mean your faculty aren't even signed out. To be able to roll back, deploy a pinned tag (`ghcr.io/authortom/simhub:sha-<commit>` or a release version) instead of `latest`, and change the tag in `docker-compose.yml` when you upgrade.
+
+### Building the image yourself
+
+If you prefer not to pull the published image (e.g. on an air-gapped network), build it from source:
+
+```bash
+git clone https://github.com/authorTom/simhub.git
+cd simhub
+docker build -t simhub .
+docker run -d --name simhub -p 3000:3000 -v simhub-data:/app/data --restart unless-stopped simhub
+```
+
+### Where images are published
+
+Every push to `main` automatically builds and publishes a fresh multi-architecture image to **GitHub Container Registry** via the included [workflow](.github/workflows/docker-publish.yml):
+
+| Tag | Meaning |
+| :--- | :--- |
+| `ghcr.io/authortom/simhub:latest` | Current state of `main` |
+| `ghcr.io/authortom/simhub:sha-<commit>` | Immutable build of a specific commit (best for pinning/rollback) |
+| `ghcr.io/authortom/simhub:<version>` | Published when a `v*` release tag is pushed |
+
+---
+
 ## 🏥 Running SimHub for a department
 
-For a single sim suite, `npm start` on any spare machine (Windows, macOS, Linux — modest hardware is fine) and browsing to its address is genuinely enough. For a shared departmental installation:
+For a single sim suite, the Docker quick start above (or `npm start` on any spare machine — modest hardware is fine) is genuinely enough. For a shared departmental installation:
 
 *   **Put it behind HTTPS**: run a reverse proxy (nginx, Caddy, IIS) in front of SimHub and terminate TLS there. Sign-in uses bearer tokens and assumes an encrypted transport.
 *   **Set `TRUST_PROXY=1`** when behind a proxy so login rate-limiting sees real client addresses. Leave it unset when clients connect directly.
 *   **Protect the `data/` folder**: it holds password hashes and session tokens. It is never served over the web, but restrict filesystem permissions to the service account and include it in backups.
 *   **Restarts are painless**: active sign-ins persist across restarts and redeploys, so updating SimHub does not log your faculty out mid-session.
+*   **Monitoring**: `GET /api/health` is an unauthenticated liveness endpoint for uptime checks and container orchestrators (the Docker image already uses it for its built-in healthcheck).
 *   **Port**: set the `PORT` environment variable to change from the default `3000`.
 
 Security features already built in: salted scrypt password hashing, brute-force login throttling, 8-hour sliding sessions with revocation on password change or account removal, server-side role enforcement, path-traversal and stored-XSS protections, and last-admin lockout guards.
@@ -150,6 +232,7 @@ The UI tests and screenshots need Google Chrome installed in a standard location
 ```text
 simhub/
 ├── .github/                   # Issue templates
+│   └── workflows/             # CI: builds & publishes the Docker image
 ├── data/                      # Flat-file JSON database (git-ignored)
 │   ├── scenarios/             # One file per scenario
 │   ├── programmes/            # Programme tracks
@@ -162,6 +245,8 @@ simhub/
 │   └── index.html             # Application shell
 ├── CHANGELOG.md               # Full change history
 ├── CONTRIBUTING.md            # Contribution guide
+├── Dockerfile                 # Production container image
+├── docker-compose.yml         # Departmental deployment recipe
 ├── LICENSE                    # MIT licence
 ├── scenario_template.md       # ASPiH scenario blueprint (reference)
 ├── seed.js                    # Example dataset generator

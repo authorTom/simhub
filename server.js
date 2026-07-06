@@ -466,6 +466,12 @@ function requireScenarioAccess(req, res, next) {
   return res.status(403).json({ error: 'Forbidden. You do not have permission to modify scenarios.' });
 }
 
+// Unauthenticated liveness probe for containers, orchestrators and uptime
+// monitors. Deliberately reveals nothing beyond process health.
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 // --- AUTH ENDPOINTS ---
 
 app.post('/api/login', async (req, res) => {
@@ -1293,6 +1299,19 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: message });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`SimHub Server running on http://localhost:${PORT}`);
+});
+
+// Containers and process managers stop the app with SIGTERM/SIGINT: flush
+// session state (captures sliding-expiry updates since the last sweep) and
+// stop accepting connections, then exit once in-flight requests drain.
+['SIGTERM', 'SIGINT'].forEach(sig => {
+  process.on(sig, () => {
+    console.log(`Received ${sig}, shutting down gracefully...`);
+    try { saveSessions(); } catch { /* best effort on the way out */ }
+    server.close(() => process.exit(0));
+    // Hard stop if a connection refuses to drain before the runtime kills us.
+    setTimeout(() => process.exit(0), 5000).unref();
+  });
 });
