@@ -1289,22 +1289,6 @@ main {
   animation: modalIn 0.4s cubic-bezier(0.21, 1.02, 0.73, 1);
 }
 
-/* Demo accounts behind a quiet disclosure */
-.login-credentials-helper summary {
-  cursor: pointer;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  user-select: none;
-  list-style: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transition: color var(--transition-fast);
-}
-.login-credentials-helper summary::-webkit-details-marker { display: none; }
-.login-credentials-helper summary:hover { color: var(--text-secondary); }
-.login-credentials-helper[open] summary { margin-bottom: 10px; }
-
 .login-logo {
   display: flex;
   flex-direction: column;
@@ -1323,26 +1307,6 @@ main {
 
 .login-logo .logo-text {
   font-size: 1.8rem;
-}
-
-.login-credentials-helper {
-  margin-top: 24px;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: var(--border-radius-sm);
-  border: 1px solid var(--glass-border);
-  font-size: 0.8rem;
-}
-
-.login-credentials-helper h5 {
-  margin-bottom: 8px;
-  color: var(--text-secondary);
-}
-
-.login-credentials-helper p {
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  margin-bottom: 4px;
 }
 
 /* Toast notifications: stacked, animated, auto-dismiss progress bar */

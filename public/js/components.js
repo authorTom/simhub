@@ -34,12 +34,14 @@ const components = {
   allScenarios: [],
   allProgrammes: [],
   currentFormTab: 'tab-general',
-  
+
+  // Ordered steps of the scenario editor wizard.
+  EDITOR_TABS: ['tab-general', 'tab-outcomes', 'tab-patient', 'tab-setup', 'tab-progression', 'tab-debrief', 'tab-aspih'],
+
   // Interactive Run State
   runState: {
     scenario: null,
     activePhaseIndex: 0,
-    startTime: null,
     elapsedSeconds: 0,
     timerInterval: null,
     timerRunning: false,
@@ -51,8 +53,7 @@ const components = {
     scenario: null,
     currentStep: 'reactions', // 'reactions', 'description', 'analysis', 'summary'
     elapsedSeconds: 0,
-    timerInterval: null,
-    timerRunning: false
+    timerInterval: null
   },
 
   // Initialize and load data
@@ -1163,8 +1164,7 @@ const components = {
     this.currentFormTab = tabId;
 
     // Stepper states: current step is active, earlier steps show completed
-    const stepList = ['tab-general', 'tab-outcomes', 'tab-patient', 'tab-setup', 'tab-progression', 'tab-debrief', 'tab-aspih'];
-    const currentIdx = stepList.indexOf(tabId);
+    const currentIdx = this.EDITOR_TABS.indexOf(tabId);
     const tabs = document.querySelectorAll('#editor-tabs-container .editor-tab');
     tabs.forEach((tab, i) => {
       tab.classList.toggle('active', i === currentIdx);
@@ -1186,17 +1186,14 @@ const components = {
     // Update wizard button displays
     const prevBtn = document.getElementById('btn-prev-tab');
     const nextBtn = document.getElementById('btn-next-tab');
-    
-    const tabList = ['tab-general', 'tab-outcomes', 'tab-patient', 'tab-setup', 'tab-progression', 'tab-debrief', 'tab-aspih'];
-    const idx = tabList.indexOf(tabId);
 
-    if (idx === 0) {
+    if (currentIdx === 0) {
       prevBtn.style.visibility = 'hidden';
     } else {
       prevBtn.style.visibility = 'visible';
     }
 
-    if (idx === tabList.length - 1) {
+    if (currentIdx === this.EDITOR_TABS.length - 1) {
       nextBtn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save Scenario';
       nextBtn.onclick = () => this.saveScenario();
     } else {
@@ -1206,18 +1203,16 @@ const components = {
   },
 
   nextEditorTab() {
-    const tabList = ['tab-general', 'tab-outcomes', 'tab-patient', 'tab-setup', 'tab-progression', 'tab-debrief', 'tab-aspih'];
-    const idx = tabList.indexOf(this.currentFormTab);
-    if (idx < tabList.length - 1) {
-      this.switchEditorTab(tabList[idx + 1]);
+    const idx = this.EDITOR_TABS.indexOf(this.currentFormTab);
+    if (idx < this.EDITOR_TABS.length - 1) {
+      this.switchEditorTab(this.EDITOR_TABS[idx + 1]);
     }
   },
 
   prevEditorTab() {
-    const tabList = ['tab-general', 'tab-outcomes', 'tab-patient', 'tab-setup', 'tab-progression', 'tab-debrief', 'tab-aspih'];
-    const idx = tabList.indexOf(this.currentFormTab);
+    const idx = this.EDITOR_TABS.indexOf(this.currentFormTab);
     if (idx > 0) {
-      this.switchEditorTab(tabList[idx - 1]);
+      this.switchEditorTab(this.EDITOR_TABS[idx - 1]);
     }
   },
 
@@ -2926,8 +2921,7 @@ const components = {
     this.debriefState.scenario = s;
     this.debriefState.currentStep = 'reactions';
     this.debriefState.elapsedSeconds = 0;
-    this.debriefState.timerRunning = false;
-    
+
     if (this.debriefState.timerInterval) clearInterval(this.debriefState.timerInterval);
 
     const container = document.getElementById('debrief-content');
@@ -3118,7 +3112,6 @@ const components = {
   },
 
   startDebriefTimer() {
-    this.debriefState.timerRunning = true;
     this.debriefState.timerInterval = setInterval(() => {
       this.debriefState.elapsedSeconds++;
       this.updateDebriefTimerDisplay();
@@ -3407,6 +3400,11 @@ const components = {
       app.showToast(`${s.email}: ${s.reason}`, 'error'));
   },
 
+  // Escape a value for a CSV cell (RFC 4180 double-quote style).
+  csvQuote(v) {
+    return `"${String(v).replace(/"/g, '""')}"`;
+  },
+
   // Download the account list (no credentials) as a CSV file
   exportUsersCsv() {
     const users = this.adminUsersState.users;
@@ -3414,14 +3412,13 @@ const components = {
       app.showToast('No users loaded to export.', 'error');
       return;
     }
-    const quote = v => `"${String(v).replace(/"/g, '""')}"`;
     const csv = ['email,name,role,status,created,last_login',
       ...users.map(u => [
         u.email, u.name, u.role,
         u.disabled ? 'Disabled' : 'Active',
         u.createdAt || '',
         u.lastLogin || 'Never'
-      ].map(quote).join(','))].join('\r\n');
+      ].map(v => this.csvQuote(v)).join(','))].join('\r\n');
     this.downloadFile(csv, `simhub_users_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv');
     app.showToast('User list exported.', 'success');
   },
@@ -3552,9 +3549,8 @@ const components = {
     const dl = document.getElementById('bulk-creds-download');
     if (dl) {
       dl.addEventListener('click', () => {
-        const quote = v => `"${String(v).replace(/"/g, '""')}"`;
         const csv = ['email,name,role,temporary_password',
-          ...created.map(c => [c.email, c.name, c.role, c.tempPassword || ''].map(quote).join(','))].join('\r\n');
+          ...created.map(c => [c.email, c.name, c.role, c.tempPassword || ''].map(v => this.csvQuote(v)).join(','))].join('\r\n');
         this.downloadFile(csv, `simhub_new_accounts_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv');
       });
     }

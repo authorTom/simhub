@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "A beautiful, premium Clinical Simulation Scenario Storage & running system designed to align with ASPiH standards.",
   "main": "server.js",
+  "engines": {
+    "node": ">=16.0.0"
+  },
   "scripts": {
     "start": "node server.js",
     "seed": "node seed.js",
