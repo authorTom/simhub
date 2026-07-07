@@ -21,9 +21,10 @@ lerna-debug.log*
 .env.production.local
 *.env
 
-# IDE / Editor folders
+# IDE / Editor / assistant folders
 .vscode/
 .idea/
+.claude/
 *.suo
 *.ntvs*
 *.njsproj

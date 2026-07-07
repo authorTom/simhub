@@ -389,17 +389,23 @@ function editorProgrammeIds(user) {
   return Array.isArray(user && user.programmeIds) ? user.programmeIds : [];
 }
 
-// Ids of every programme on disk (used to validate allocations).
-function existingProgrammeIds() {
-  const set = new Set();
+// Iterate every readable programme file; unreadable files are skipped
+// (readJsonSafe logs them). The file path is passed for callers that need
+// to write the programme back.
+function eachProgramme(cb) {
   fs.readdirSync(PROGRAMMES_DIR)
     .filter(f => f.endsWith('.json'))
     .forEach(f => {
-      try {
-        const p = JSON.parse(fs.readFileSync(path.join(PROGRAMMES_DIR, f), 'utf8'));
-        if (p && p.id) set.add(p.id);
-      } catch { /* ignore unreadable programme files */ }
+      const filePath = path.join(PROGRAMMES_DIR, f);
+      const prog = readJsonSafe(filePath);
+      if (prog) cb(prog, filePath);
     });
+}
+
+// Ids of every programme on disk (used to validate allocations).
+function existingProgrammeIds() {
+  const set = new Set();
+  eachProgramme(p => { if (p.id) set.add(p.id); });
   return set;
 }
 
@@ -418,14 +424,9 @@ function sanitizeProgrammeIds(input) {
 // Programme ids whose scenarioIds include the given scenario.
 function programmeIdsContainingScenario(scenarioId) {
   const ids = new Set();
-  fs.readdirSync(PROGRAMMES_DIR)
-    .filter(f => f.endsWith('.json'))
-    .forEach(f => {
-      try {
-        const p = JSON.parse(fs.readFileSync(path.join(PROGRAMMES_DIR, f), 'utf8'));
-        if (Array.isArray(p.scenarioIds) && p.scenarioIds.includes(scenarioId)) ids.add(p.id);
-      } catch { /* ignore */ }
-    });
+  eachProgramme(p => {
+    if (Array.isArray(p.scenarioIds) && p.scenarioIds.includes(scenarioId)) ids.add(p.id);
+  });
   return ids;
 }
 
@@ -738,14 +739,11 @@ app.delete('/api/scenarios/:id', authenticate, requireScenarioAccess, (req, res)
     writeJsonAtomic(binPath, data);
     fs.unlinkSync(filePath);
 
-    // Also remove scenario from any programmes. Per-file failures are logged
-    // and skipped: the scenario has already moved to the recycle bin, so one
-    // unreadable programme file must not turn a completed delete into a 500.
-    const progFiles = fs.readdirSync(PROGRAMMES_DIR);
-    progFiles.filter(file => file.endsWith('.json')).forEach(file => {
-      const pPath = path.join(PROGRAMMES_DIR, file);
-      const prog = readJsonSafe(pPath);
-      if (prog && prog.scenarioIds && prog.scenarioIds.includes(scenarioId)) {
+    // Also remove scenario from any programmes. Unreadable programme files
+    // are logged and skipped: the scenario has already moved to the recycle
+    // bin, so one bad file must not turn a completed delete into a 500.
+    eachProgramme((prog, pPath) => {
+      if (prog.scenarioIds && prog.scenarioIds.includes(scenarioId)) {
         prog.scenarioIds = prog.scenarioIds.filter(id => id !== scenarioId);
         writeJsonAtomic(pPath, prog);
       }
@@ -763,11 +761,8 @@ app.delete('/api/scenarios/:id', authenticate, requireScenarioAccess, (req, res)
 // List programmes
 app.get('/api/programmes', authenticate, (req, res) => {
   try {
-    const files = fs.readdirSync(PROGRAMMES_DIR);
-    const programmes = files
-      .filter(file => file.endsWith('.json'))
-      .map(file => readJsonSafe(path.join(PROGRAMMES_DIR, file)))
-      .filter(Boolean);
+    const programmes = [];
+    eachProgramme(p => programmes.push(p));
     res.json(programmes);
   } catch (err) {
     res.status(500).json({ error: 'Failed to retrieve programmes: ' + err.message });
