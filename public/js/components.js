@@ -2416,6 +2416,9 @@ const components = {
       // source so every panel that reads runState.scenario is XSS-safe. Numeric
       // vitals are unaffected by escaping so monitor parsing still works.
       const scenario = deepEscape(await api.getScenario(id));
+      // Minimal or imported scenarios may lack progression phases entirely;
+      // default to an empty timeline so the HUD renders instead of crashing.
+      if (!Array.isArray(scenario.progression)) scenario.progression = [];
       this.runState.scenario = scenario;
       this.runState.activePhaseIndex = 0;
       this.runState.elapsedSeconds = 0;
@@ -2692,6 +2695,9 @@ const components = {
     const animate = () => {
       const el = document.getElementById('ecg-strip');
       if (!el || el !== canvas) return; // exited HUD or re-rendered
+      // Halt when the user navigates away (startRunHUD re-renders on return);
+      // otherwise the loop keeps burning CPU behind other views.
+      if (app.currentView !== 'run-hud') return;
 
       const w = canvas.width;
       const h = canvas.height;

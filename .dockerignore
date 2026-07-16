@@ -16,6 +16,7 @@ LICENSE
 test-qa.js
 test-ui-save.js
 capture-screenshots.js
+dev-helpers.js
 scenario_template.md
 Clinical-Simulation-Scenario-Master-Template.docx
 public/screenshots/

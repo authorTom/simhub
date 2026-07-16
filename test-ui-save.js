@@ -1,32 +1,20 @@
 const puppeteer = require('puppeteer-core');
-const path = require('path');
-const fs = require('fs');
+const { getChromePath, ensureRotatedLogin } = require('./dev-helpers');
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const URL = `http://localhost:${PORT}`;
-
-// Find local Google Chrome executable
-function getChromePath() {
-  const commonPaths = [
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    path.join(process.env.USERPROFILE || 'C:\\Users\\thom', 'AppData\\Local\\Google\\Chrome\\Application\\chrome.exe')
-  ];
-
-  for (const p of commonPaths) {
-    if (fs.existsSync(p)) {
-      return p;
-    }
-  }
-  return null;
-}
 
 async function run() {
   const chromePath = getChromePath();
   if (!chromePath) {
-    console.error('❌ Google Chrome not found.');
+    console.error('❌ Google Chrome not found. Set CHROME_PATH to your Chrome/Chromium binary.');
     process.exit(1);
   }
+
+  // Fresh installs seed the admin account with a provisional password that
+  // forces a rotation modal on first login; complete the rotation over the
+  // API first so the UI flow below goes straight to the dashboard.
+  await ensureRotatedLogin(URL, 'admin@simhub.local', 'admin123');
 
   const browser = await puppeteer.launch({
     executablePath: chromePath,

@@ -389,6 +389,12 @@ header {
   color: #8b5cf6;
 }
 
+/* Failed / unmet status (e.g. an ASPiH standard marked "Not Met") */
+.badge-danger {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--accent-red);
+}
+
 /* Programme allocation checklist in the user edit modal */
 .prog-alloc-list {
   display: flex;
