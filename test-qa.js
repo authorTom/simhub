@@ -1,6 +1,7 @@
 const http = require('http');
+const { ensureRotatedLogin } = require('./dev-helpers');
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const BASE_URL = `http://localhost:${PORT}`;
 
 // Helper to make HTTP requests in Node.js without external dependencies
@@ -73,11 +74,12 @@ async function runTests() {
     // -------------------------------------------------------------
     // TEST 1: Login as Admin
     // -------------------------------------------------------------
+    // On a fresh install the seeded accounts are on a provisional password
+    // that blocks all other endpoints; ensureRotatedLogin completes the
+    // forced rotation (ending on the same documented password) so the rest
+    // of the suite can exercise the API.
     console.log('Testing Admin Authentication...');
-    const adminLoginRes = await request('/api/login', 'POST', {
-      email: 'admin@simhub.local',
-      password: 'admin123'
-    });
+    const adminLoginRes = await ensureRotatedLogin(BASE_URL, 'admin@simhub.local', 'admin123');
     
     assert(adminLoginRes.status === 200, 'Admin login returns 200 OK');
     assert(adminLoginRes.body.token !== undefined, 'Admin login returns a session token');
@@ -89,10 +91,7 @@ async function runTests() {
     // TEST 2: Login as Read-Only Faculty
     // -------------------------------------------------------------
     console.log('\nTesting Faculty Authentication...');
-    const facultyLoginRes = await request('/api/login', 'POST', {
-      email: 'faculty@simhub.local',
-      password: 'faculty123'
-    });
+    const facultyLoginRes = await ensureRotatedLogin(BASE_URL, 'faculty@simhub.local', 'faculty123');
     
     assert(facultyLoginRes.status === 200, 'Faculty login returns 200 OK');
     assert(facultyLoginRes.body.token !== undefined, 'Faculty login returns a session token');

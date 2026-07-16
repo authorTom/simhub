@@ -1,33 +1,23 @@
 const puppeteer = require('puppeteer-core');
 const path = require('path');
 const fs = require('fs');
+const { getChromePath, ensureRotatedLogin } = require('./dev-helpers');
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const URL = `http://localhost:${PORT}`;
 const SCREENSHOTS_DIR = path.join(__dirname, 'public', 'screenshots');
-
-// Find local Google Chrome executable
-function getChromePath() {
-  const commonPaths = [
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    path.join(process.env.USERPROFILE || 'C:\\Users\\thom', 'AppData\\Local\\Google\\Chrome\\Application\\chrome.exe')
-  ];
-
-  for (const p of commonPaths) {
-    if (fs.existsSync(p)) {
-      return p;
-    }
-  }
-  return null;
-}
 
 async function run() {
   const chromePath = getChromePath();
   if (!chromePath) {
-    console.error('❌ Could not find Google Chrome installation. Skipping headless UI tests.');
+    console.error('❌ Could not find Google Chrome installation. Set CHROME_PATH to your Chrome/Chromium binary.');
     process.exit(1);
   }
+
+  // Fresh installs seed the admin account with a provisional password that
+  // forces a rotation modal on first login; complete the rotation over the
+  // API first so the captures below show the normal dashboard flow.
+  await ensureRotatedLogin(URL, 'admin@simhub.local', 'admin123');
 
   console.log(`Using Google Chrome at: ${chromePath}`);
   console.log(`Screenshots will be saved to: ${SCREENSHOTS_DIR}`);
@@ -115,11 +105,6 @@ async function run() {
     console.log('Entering PEARLS Debrief session...');
     const endRunBtn = await page.waitForSelector('.hud-layout button.btn-emerald');
     await endRunBtn.click();
-
-    // Handle standard JS confirm prompt
-    page.on('dialog', async dialog => {
-      await dialog.accept();
-    });
 
     await page.waitForSelector('.debrief-layout', { timeout: 5000 });
     await new Promise(r => setTimeout(r, 1000));
