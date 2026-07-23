@@ -148,15 +148,27 @@ docker exec simhub node seed.js
 
 ### Recommended — Docker Compose
 
-The repository ships a ready-made [docker-compose.yml](docker-compose.yml). Copy it (or clone the repo) onto the server, then:
+The repository ships a ready-made [compose.yaml](compose.yaml) that **pulls the published image** — you do **not** need the source checked out on the server. Grab just that one file onto the server and start it:
 
 ```bash
-docker compose up -d                     # start
+# Download the compose file next to where your data volume will live
+curl -fsSL -o compose.yaml \
+  https://raw.githubusercontent.com/authorTom/simhub/main/compose.yaml
+
+# Optional: configuration overrides (proxy, port). Compose auto-reads a sibling .env
+curl -fsSL -o .env.example \
+  https://raw.githubusercontent.com/authorTom/simhub/main/.env.example
+cp .env.example .env    # then edit .env if you need TRUST_PROXY, etc.
+
+docker compose up -d                     # start (pulls the image)
+docker compose ps                        # confirm STATUS shows "(healthy)"
 docker compose exec simhub node seed.js  # optional: load the example scenario
 docker compose logs -f simhub            # watch the logs
 ```
 
-Compose gives you a declarative record of your deployment (port, volume, environment) that you can keep in your team's documentation. Uncomment `TRUST_PROXY: "1"` in the file when running behind a reverse proxy.
+Then open `http://<server>:3000` and sign in as `admin@simhub.local` / `admin123`; you are forced to set a real password at first sign-in.
+
+Compose gives you a declarative record of your deployment (port, volume, environment) that you can keep in your team's documentation. To run behind a reverse proxy, set `TRUST_PROXY=1` in `.env` (or uncomment it in `compose.yaml`).
 
 ### Your data lives in the volume
 
@@ -173,7 +185,7 @@ docker run --rm -v simhub-data:/data -v "$PWD":/backup alpine \
 docker compose pull && docker compose up -d
 ```
 
-That's it — the new container starts against the same data volume, and persisted sessions mean your faculty aren't even signed out. To be able to roll back, deploy a pinned tag (`ghcr.io/authortom/simhub:sha-<commit>` or a release version) instead of `latest`, and change the tag in `docker-compose.yml` when you upgrade.
+That's it — the new container starts against the same data volume, and persisted sessions mean your faculty aren't even signed out. To be able to roll back, deploy a pinned tag (`ghcr.io/authortom/simhub:sha-<commit>` or a release version) instead of `latest`, and change the tag in `compose.yaml` when you upgrade.
 
 ### Building the image yourself
 
@@ -246,7 +258,8 @@ simhub/
 ├── CHANGELOG.md               # Full change history
 ├── CONTRIBUTING.md            # Contribution guide
 ├── Dockerfile                 # Production container image
-├── docker-compose.yml         # Departmental deployment recipe
+├── compose.yaml               # Departmental deployment recipe (pull-based)
+├── .env.example               # Config template -> copy to .env
 ├── LICENSE                    # MIT licence
 ├── scenario_template.md       # ASPiH scenario blueprint (reference)
 ├── seed.js                    # Example dataset generator
