@@ -29,9 +29,11 @@ services:
     init: true
 
     ports:
-      # "host:container" -- change the LEFT number to serve on a different host
-      # port. Quoted so YAML never reinterprets it (e.g. 22:22 as base-60).
-      - "3000:3000"
+      # "host:container". Set HOST_PORT in .env to serve on a different host
+      # port (defaults to 3000); the container port stays 3000 to match the
+      # image's healthcheck. Quoted so YAML never reinterprets it (e.g. 22:22
+      # as base-60).
+      - "${HOST_PORT:-3000}:3000"
 
     environment:
       # Production defaults. Override in .env if needed.
